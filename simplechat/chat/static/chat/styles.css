@@ -1,0 +1,132 @@
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    height: 100%;
+}
+
+body {
+    font-family: -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: #ece5dd;
+}
+
+.container {
+    height: 100vh;
+    margin: 0;
+    background: #fff;
+    border-radius: 0;
+    box-shadow: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.container.auth {
+    max-width: 420px;
+    margin: 60px auto;
+    height: auto;
+    padding: 28px;
+    border-radius: 14px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+}
+
+h1 { margin: 0 0 12px 0; }
+
+input, button {
+    width: 100%;
+    padding: 11px;
+    margin: 6px 0;
+    border-radius: 8px;
+    border: 1px solid #d7d7d7;
+    font-size: 15px;
+}
+
+input:focus { outline: none; border-color: #128c7e; }
+
+button {
+    background: #128c7e;
+    color: #fff;
+    border: none;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+}
+
+button:hover { background: #0f7a6d; }
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #128c7e;
+    color: #fff;
+    padding: 14px 18px;
+    flex-shrink: 0;
+}
+
+.topbar h1 { font-size: 18px; margin: 0; }
+.topbar a { color: #eafff9; text-decoration: none; font-size: 13px; }
+
+#chat-box {
+    flex: 1;
+    overflow-y: auto;
+    background: #ece5dd;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+}
+
+.msg {
+    max-width: 78%;
+    padding: 8px 12px 6px 12px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 14.5px;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.08);
+    word-wrap: break-word;
+}
+
+.msg.me {
+    align-self: flex-end;
+    background: #d9fdd3;
+    border-bottom-right-radius: 2px;
+}
+
+.msg.them {
+    align-self: flex-start;
+    background: #fff;
+    border-bottom-left-radius: 2px;
+}
+
+.msg .sender {
+    font-size: 12.5px;
+    font-weight: 700;
+    margin-bottom: 2px;
+}
+
+.msg .text {
+    color: #111b21;
+    line-height: 1.35;
+}
+
+.msg .time {
+    font-size: 10.5px;
+    color: #8b8b8b;
+    text-align: right;
+    margin-top: 3px;
+}
+
+#send-form {
+    display: flex;
+    gap: 8px;
+    padding: 12px 14px;
+    background: #f7f7f7;
+    margin: 0;
+    flex-shrink: 0;
+}
+
+#send-form input { margin: 0; flex: 1; }
+#send-form button { width: auto; padding: 10px 20px; margin: 0; }
+
+.auth p { font-size: 14px; }
+.auth a { color: #128c7e; font-weight: 600; text-decoration: none; }

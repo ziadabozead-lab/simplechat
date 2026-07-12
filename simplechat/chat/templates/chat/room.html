@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+{% load static %}
+<html>
+<!DOCTYPE html>
+{% load static %}
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Group Chat</title>
+    <link rel="stylesheet" href="{% static 'chat/styles.css' %}">
+</head>
+<body>
+    <div class="container">
+        <div class="topbar">
+            <h1>Group Chat</h1>
+            <div class="topbar-right">
+                <button id="theme-toggle" type="button">🌙 Dark</button>
+                <a href="{% url 'logout' %}">Logout ({{ user.username }})</a>
+            </div>
+        </div>
+
+        <div id="chat-box">
+            {% for m in messages %}
+                <div class="msg {% if m.sender == user.username %}me{% else %}them{% endif %}" data-id="{{ m.id }}" data-sender="{{ m.sender }}">
+                    {% if m.sender != user.username %}<div class="sender">{{ m.sender }}</div>{% endif %}
+                    <div class="text">{{ m.text }}</div>
+                    <div class="time">{{ m.created_at|time:"H:i" }}</div>
+                </div>
+            {% endfor %}
+        </div>
+
+        <form id="send-form">
+            {% csrf_token %}
+            <input type="text" id="text-input" placeholder="Write a message" autocomplete="off">
+            <button type="submit">Send</button>
+        </form>
+    </div>
+
+    <script>
+        // Values Django needs to hand to the external JS file.
+        const LOGIN_URL = "{% url 'login' %}";
+        const LAST_ID = {% if messages %}{{ messages.last.id }}{% else %}0{% endif %};
+    </script>
+    <script src="{% static 'chat/room.js' %}"></script>
+</body>
+</html>
