@@ -5,21 +5,29 @@ const themeToggle = document.getElementById('theme-toggle');
 let lastId = LAST_ID;
 
 // ---- Theme toggle ----
-const savedTheme = localStorage.getItem('chat-theme') || 'light';
-if (savedTheme === 'dark') {
-    document.documentElement.setAttribute('data-theme', 'dark');
-    themeToggle.textContent = '☀️ Light';
+// (The <html> element may already carry data-theme="dark" from the
+// inline anti-flash script in the template; this just keeps the
+// button in sync and handles clicks.)
+const themeIcon = themeToggle.querySelector('.icon');
+const themeLabel = themeToggle.querySelector('.label');
+
+function setToggleUI(isDark) {
+    themeIcon.textContent = isDark ? '☀️' : '🌙';
+    themeLabel.textContent = isDark ? 'Light' : 'Dark';
 }
+
+setToggleUI(document.documentElement.getAttribute('data-theme') === 'dark');
+
 themeToggle.addEventListener('click', () => {
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (isDark) {
         document.documentElement.removeAttribute('data-theme');
-        themeToggle.textContent = '🌙 Dark';
         localStorage.setItem('chat-theme', 'light');
+        setToggleUI(false);
     } else {
         document.documentElement.setAttribute('data-theme', 'dark');
-        themeToggle.textContent = '☀️ Light';
         localStorage.setItem('chat-theme', 'dark');
+        setToggleUI(true);
     }
 });
 
