@@ -1,0 +1,106 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Group Chat</title>
+    <link rel="stylesheet" href="{% static 'chat/styles.css' %}">
+    <script>
+        // Apply saved theme before the page paints, so there is no flash
+        // of the wrong theme on load.
+        (function () {
+            var saved = localStorage.getItem('chat-theme');
+            if (saved === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            }
+        })();
+    </script>
+</head>
+<body>
+    <div class="container">
+        <div class="topbar">
+            <h1>Group Chat</h1>
+            <div class="topbar-right">
+                <button id="theme-toggle" type="button">
+                    <span class="icon">🌙</span> <span class="label">Dark</span>
+                </button>
+                <form class="logout-form" method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button type="submit" class="logout-btn">Logout ({{ user.username }})</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="main-wrapper">
+            <div id="members-sidebar">
+                <h3>Members</h3>
+                <ul id="members-list">
+                    {% for member in members %}
+                        <li data-username="{{ member.username }}">
+                            <span class="status-dot {% if member.is_online %}online{% else %}offline{% endif %}"></span>
+                            <span class="member-name">{{ member.username }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="chat-area">
+                <div id="chat-box">
+                    {% for m in messages %}
+                        <div class="msg {% if m.sender == user.username %}me{% else %}them{% endif %}" data-id="{{ m.id }}" data-sender="{{ m.sender }}">
+                            {% if m.sender != user.username %}<div class="sender">{{ m.sender }}</div>{% endif %}
+                            {% if m.message_type == 'audio' %}
+                                <audio class="voice-note" controls preload="metadata">
+                                    {% if m.audio.name|slice:"-4:" == "webm" %}
+                                        <source src="{{ m.audio.url }}" type="audio/webm">
+                                    {% elif m.audio.name|slice:"-3:" == "ogg" %}
+                                        <source src="{{ m.audio.url }}" type="audio/ogg">
+                                    {% elif m.audio.name|slice:"-3:" == "m4a" %}
+                                        <source src="{{ m.audio.url }}" type="audio/mp4">
+                                    {% elif m.audio.name|slice:"-3:" == "mp3" %}
+                                        <source src="{{ m.audio.url }}" type="audio/mpeg">
+                                    {% else %}
+                                        <source src="{{ m.audio.url }}">
+                                    {% endif %}
+                                </audio>
+                                <div class="voice-error hidden"></div>
+                            {% else %}
+                                <div class="text">{{ m.text }}</div>
+                            {% endif %}
+                            <div class="time">{{ m.created_at|time:"H:i" }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+
+                <form id="send-form">
+                    {% csrf_token %}
+                    <input type="text" id="text-input" placeholder="Write a message" autocomplete="off">
+                    <button type="button" id="mic-btn" title="Record a voice message">
+                        <span class="mic-icon">🎤</span>
+                    </button>
+                    <button type="submit">Send</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div id="recording-banner" class="hidden">
+        <span class="rec-dot"></span>
+        <span id="recording-time">0:00</span>
+        <span class="rec-label">Recording…</span>
+        <button type="button" id="rec-cancel">Cancel</button>
+        <button type="button" id="rec-stop">Send</button>
+    </div>
+
+    <script>
+        // Values Django needs to hand to the external JS file.
+        const LOGIN_URL = "{% url 'login' %}";
+        const SEND_VOICE_URL = "{% url 'send_voice' %}";
+        const SEND_URL = "{% url 'send_message' %}";
+        const MESSAGES_URL = "{% url 'get_messages' %}";
+        const LAST_ID = {% if messages %}{{ messages.last.id }}{% else %}0{% endif %};
+    </script>
+    <script src="{% static 'chat/room.js' %}"></script>
+</body>
+</html>
