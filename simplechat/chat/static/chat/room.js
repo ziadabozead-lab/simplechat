@@ -1,32 +1,6 @@
-/* ==========================================================================
-   SimpleChat — room.js
-   ---------------------------------------------------------------------
-   Matches the actual chat/views.py + chat/urls.py contract:
-
-   - POST {{ SEND_URL }}         ("/send/")        body: text=...
-        -> { "ok": true }                          (no message payload back,
-                                                     so we re-poll after send)
-
-   - GET  {{ MESSAGES_URL }}?after=<id>  ("/messages/")
-        -> { "messages": [ { id, sender, type, time, is_me,
-                              text?, audio_url?, audio_type? }, ... ] }
-
-   - POST {{ SEND_VOICE_URL }}   ("/send-voice/")  FormData: audio=<blob>
-        -> { "ok": true, "message": { same shape as above } }
-
-   Requires these globals to already be defined in room.html's inline
-   <script> block (SEND_VOICE_URL is already there; SEND_URL and
-   MESSAGES_URL need to be added alongside it):
-        const SEND_URL = "{% url 'send_message' %}";
-        const MESSAGES_URL = "{% url 'get_messages' %}";
-   ========================================================================== */
-
 (function () {
     "use strict";
 
-    /* ---------------------------------------------------------------- */
-    /* Shared helpers                                                    */
-    /* ---------------------------------------------------------------- */
 
     function getCookie(name) {
         const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
@@ -47,9 +21,6 @@
         chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     }
 
-    /* ---------------------------------------------------------------- */
-    /* Theme toggle (light / dark), persisted in localStorage           */
-    /* ---------------------------------------------------------------- */
 
     (function initTheme() {
         const btn = document.getElementById('theme-toggle');
@@ -82,9 +53,6 @@
         });
     })();
 
-    /* ---------------------------------------------------------------- */
-    /* Mobile sidebar drawer (only runs if #members-sidebar exists)      */
-    /* ---------------------------------------------------------------- */
 
     (function initSidebar() {
         const sidebar = document.getElementById('members-sidebar');
@@ -118,12 +86,7 @@
         });
     })();
 
-    /* ---------------------------------------------------------------- */
-    /* WhatsApp/Chrome WebM duration fix                                 */
-    /* Chrome's MediaRecorder omits duration in the EBML header, so the  */
-    /* <audio> element reports Infinity/NaN until we force a seek.       */
-    /* ---------------------------------------------------------------- */
-
+    
     function fixAudioDuration(audio) {
         if (!audio || audio.dataset.durationFixed) return;
 
@@ -151,12 +114,7 @@
         (scope || document).querySelectorAll('audio.voice-note').forEach(fixAudioDuration);
     }
 
-    /* ---------------------------------------------------------------- */
-    /* Rendering a message bubble                                        */
-    /* Matches _serialize_message() in views.py:                        */
-    /*   { id, sender, type, time, is_me, text? , audio_url?, audio_type? } */
-    /* ---------------------------------------------------------------- */
-
+    
     function renderMessage(m) {
         const wrap = document.createElement('div');
         wrap.className = 'msg ' + (m.is_me ? 'me' : 'them');
@@ -185,11 +143,6 @@
         return wrap;
     }
 
-    /* ---------------------------------------------------------------- */
-    /* Sending a text message                                            */
-    /* send_message only returns {"ok": true}, so on success we          */
-    /* immediately poll for anything newer than lastId to pick it up.    */
-    /* ---------------------------------------------------------------- */
 
     let lastId = typeof LAST_ID !== 'undefined' ? LAST_ID : 0;
     let polling = false;
@@ -230,9 +183,6 @@
         });
     }
 
-    /* ---------------------------------------------------------------- */
-    /* Polling for new messages                                          */
-    /* ---------------------------------------------------------------- */
 
     function pollForMessages() {
         if (polling) return; // avoid overlapping requests
@@ -261,9 +211,35 @@
 
     setInterval(pollForMessages, 3000);
 
-    /* ---------------------------------------------------------------- */
-    /* Voice recording                                                   */
-    /* ---------------------------------------------------------------- */
+
+    function pollForMembers() {
+        if (typeof MEMBERS_URL === 'undefined') return;
+        fetch(MEMBERS_URL, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data || !data.members) return;
+                data.members.forEach(function (member) {
+                    const li = document.querySelector(
+                        '#members-list li[data-username="' + CSS.escape(member.username) + '"]'
+                    );
+                    if (!li) return;
+                    const dot = li.querySelector('.status-dot');
+                    if (!dot) return;
+                    dot.classList.toggle('online', member.is_online);
+                    dot.classList.toggle('offline', !member.is_online);
+                });
+            })
+            .catch(function (err) {
+                console.debug('Member polling error:', err);
+            });
+    }
+
+    if (document.getElementById('members-list')) {
+        setInterval(pollForMembers, 5000);
+    }
+
 
     (function initVoiceRecording() {
         const micBtn = document.getElementById('mic-btn');
@@ -392,9 +368,6 @@
         }
     })();
 
-    /* ---------------------------------------------------------------- */
-    /* Init                                                              */
-    /* ---------------------------------------------------------------- */
 
     fixAllVoiceNotes(chatBox);
     scrollToBottom(false);

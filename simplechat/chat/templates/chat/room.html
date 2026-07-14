@@ -99,6 +99,7 @@
         const SEND_VOICE_URL = "{% url 'send_voice' %}";
         const SEND_URL = "{% url 'send_message' %}";
         const MESSAGES_URL = "{% url 'get_messages' %}";
+        const MEMBERS_URL = "{% url 'get_members' %}";
         const LAST_ID = {% if messages %}{{ messages.last.id }}{% else %}0{% endif %};
     </script>
     <script src="{% static 'chat/room.js' %}"></script>
