@@ -1,15 +1,18 @@
 from datetime import timedelta
+from uuid import uuid4
+
 from django.conf import settings
-from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import User
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
+from django.templatetags.static import static
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-from uuid import uuid4
-from .models import Message, UserPresence, ONLINE_WINDOW_SECONDS
+
+from .countries import COUNTRY_CHOICES, DIAL_CODE_BY_ISO2
+from .forms import SignupForm
+from .models import Message, PhoneNumber, UserPresence, UserProfile, ONLINE_WINDOW_SECONDS
 
 # Only these audio container types are accepted from the recorder.
 # (MediaRecorder in browsers produces webm/ogg containers with an
@@ -23,17 +26,74 @@ ALLOWED_AUDIO_TYPES = {
 }
 AUDIO_TYPE_BY_EXT = {"webm": "audio/webm", "ogg": "audio/ogg", "m4a": "audio/mp4", "mp3": "audio/mpeg"}
 
+# Video messages are sent as a regular file (camera-capture or existing
+# clip), not recorded in-browser, so the container list is simpler.
+ALLOWED_VIDEO_TYPES = {
+    "video/webm": "webm",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+}
+VIDEO_TYPE_BY_EXT = {"webm": "video/webm", "mp4": "video/mp4", "mov": "video/quicktime"}
+
+# Fixed, pre-approved sticker set bundled with the app at
+# chat/static/chat/stickers/. Only these filenames may ever be sent -
+# stickers aren't user uploads, so anything not in this list is rejected.
+ALLOWED_STICKERS = {
+    "thumbs_up.svg",
+    "heart.svg",
+    "laugh.svg",
+    "fire.svg",
+    "clap.svg",
+    "ok_hand.svg",
+}
+
+ALLOWED_PHOTO_TYPES = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+}
+PHOTO_TYPE_BY_EXT = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
+
+# Documents are validated by extension rather than content-type, since
+# browsers often send a generic "application/octet-stream" for these and
+# a content-type whitelist would reject perfectly normal files.
+ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "zip", "rar"}
+
 
 def signup(request):
     if request.method == "POST":
-        form = UserCreationForm(request.POST)
+        form = SignupForm(request.POST)
         if form.is_valid():
-            user = form.save()
-            login(request, user)
-            return redirect("room")
+            user = form.save(commit=False)
+            # New accounts wait for an admin to approve/reject them in the
+            # admin panel before they can log in at all.
+            user.is_active = False
+            user.save()
+
+            profile = UserProfile.objects.create(user=user, approval_status=UserProfile.PENDING)
+
+            countries = request.POST.getlist("phone_country")
+            numbers = request.POST.getlist("phone_number")
+            for iso2, number in zip(countries, numbers):
+                number = number.strip()
+                if not number:
+                    continue
+                PhoneNumber.objects.create(
+                    profile=profile,
+                    country_iso2=iso2,
+                    dial_code=DIAL_CODE_BY_ISO2.get(iso2, ""),
+                    number=number,
+                )
+
+            return redirect("signup_pending")
     else:
-        form = UserCreationForm()
-    return render(request, "chat/signup.html", {"form": form})
+        form = SignupForm()
+    return render(request, "chat/signup.html", {"form": form, "countries": COUNTRY_CHOICES})
+
+
+def signup_pending(request):
+    return render(request, "chat/signup_pending.html")
 
 
 @login_required
@@ -73,6 +133,16 @@ def _serialize_message(m, request):
     if m.message_type == Message.AUDIO and m.audio:
         data["audio_url"] = m.audio.url
         data["audio_type"] = AUDIO_TYPE_BY_EXT.get(m.audio.name.rsplit(".", 1)[-1].lower(), "audio/webm")
+    elif m.message_type == Message.VIDEO and m.video:
+        data["video_url"] = m.video.url
+        data["video_type"] = VIDEO_TYPE_BY_EXT.get(m.video.name.rsplit(".", 1)[-1].lower(), "video/mp4")
+    elif m.message_type == Message.PHOTO and m.photo:
+        data["photo_url"] = m.photo.url
+    elif m.message_type == Message.DOCUMENT and m.document:
+        data["document_url"] = m.document.url
+        data["document_name"] = m.document_name or m.document.name.rsplit("/", 1)[-1]
+    elif m.message_type == Message.STICKER and m.sticker:
+        data["sticker_url"] = static(f"chat/stickers/{m.sticker}")
     else:
         data["text"] = m.text
     return data
@@ -115,5 +185,93 @@ def send_voice(request):
         sender=request.user.username,
         message_type=Message.AUDIO,
         audio=audio_file,
+    )
+    return JsonResponse({"ok": True, "message": _serialize_message(message, request)})
+
+
+@login_required
+@require_POST
+def send_video(request):
+    video_file = request.FILES.get("video")
+    if not video_file:
+        return JsonResponse({"ok": False, "error": "No video file received."}, status=400)
+
+    if video_file.size > settings.MAX_VIDEO_MESSAGE_BYTES:
+        return JsonResponse({"ok": False, "error": "Video is too large."}, status=400)
+
+    content_type = (video_file.content_type or "").split(";")[0].strip()
+    ext = ALLOWED_VIDEO_TYPES.get(content_type)
+    if not ext:
+        return JsonResponse({"ok": False, "error": "Unsupported video format."}, status=400)
+
+    video_file.name = f"{request.user.username}_{uuid4().hex}.{ext}"
+    message = Message.objects.create(
+        sender=request.user.username,
+        message_type=Message.VIDEO,
+        video=video_file,
+    )
+    return JsonResponse({"ok": True, "message": _serialize_message(message, request)})
+
+
+@login_required
+@require_POST
+def send_sticker(request):
+    sticker = request.POST.get("sticker", "").strip()
+    if sticker not in ALLOWED_STICKERS:
+        return JsonResponse({"ok": False, "error": "Unknown sticker."}, status=400)
+
+    message = Message.objects.create(
+        sender=request.user.username,
+        message_type=Message.STICKER,
+        sticker=sticker,
+    )
+    return JsonResponse({"ok": True, "message": _serialize_message(message, request)})
+
+
+@login_required
+@require_POST
+def send_photo(request):
+    photo_file = request.FILES.get("photo")
+    if not photo_file:
+        return JsonResponse({"ok": False, "error": "No photo received."}, status=400)
+
+    if photo_file.size > settings.MAX_PHOTO_MESSAGE_BYTES:
+        return JsonResponse({"ok": False, "error": "Photo is too large."}, status=400)
+
+    content_type = (photo_file.content_type or "").split(";")[0].strip()
+    ext = ALLOWED_PHOTO_TYPES.get(content_type)
+    if not ext:
+        return JsonResponse({"ok": False, "error": "Unsupported photo format."}, status=400)
+
+    photo_file.name = f"{request.user.username}_{uuid4().hex}.{ext}"
+    message = Message.objects.create(
+        sender=request.user.username,
+        message_type=Message.PHOTO,
+        photo=photo_file,
+    )
+    return JsonResponse({"ok": True, "message": _serialize_message(message, request)})
+
+
+@login_required
+@require_POST
+def send_document(request):
+    doc_file = request.FILES.get("document")
+    if not doc_file:
+        return JsonResponse({"ok": False, "error": "No file received."}, status=400)
+
+    if doc_file.size > settings.MAX_DOCUMENT_MESSAGE_BYTES:
+        return JsonResponse({"ok": False, "error": "File is too large."}, status=400)
+
+    original_name = doc_file.name
+    ext = original_name.rsplit(".", 1)[-1].lower() if "." in original_name else ""
+    if ext not in ALLOWED_DOCUMENT_EXTENSIONS:
+        return JsonResponse({"ok": False, "error": "That file type isn't allowed."}, status=400)
+
+    doc_file.name = f"{request.user.username}_{uuid4().hex}.{ext}"
+    message = Message.objects.create(
+        sender=request.user.username,
+        message_type=Message.DOCUMENT,
+        document=doc_file,
+        document_name=original_name[:255],
     )
     return JsonResponse({"ok": True, "message": _serialize_message(message, request)})

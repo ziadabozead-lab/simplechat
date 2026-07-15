@@ -1,6 +1,32 @@
+/* ==========================================================================
+   SimpleChat — room.js
+   ---------------------------------------------------------------------
+   Matches the actual chat/views.py + chat/urls.py contract:
+
+   - POST {{ SEND_URL }}         ("/send/")        body: text=...
+        -> { "ok": true }                          (no message payload back,
+                                                     so we re-poll after send)
+
+   - GET  {{ MESSAGES_URL }}?after=<id>  ("/messages/")
+        -> { "messages": [ { id, sender, type, time, is_me,
+                              text?, audio_url?, audio_type? }, ... ] }
+
+   - POST {{ SEND_VOICE_URL }}   ("/send-voice/")  FormData: audio=<blob>
+        -> { "ok": true, "message": { same shape as above } }
+
+   Requires these globals to already be defined in room.html's inline
+   <script> block (SEND_VOICE_URL is already there; SEND_URL and
+   MESSAGES_URL need to be added alongside it):
+        const SEND_URL = "{% url 'send_message' %}";
+        const MESSAGES_URL = "{% url 'get_messages' %}";
+   ========================================================================== */
+
 (function () {
     "use strict";
 
+    /* ---------------------------------------------------------------- */
+    /* Shared helpers                                                    */
+    /* ---------------------------------------------------------------- */
 
     function getCookie(name) {
         const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
@@ -21,6 +47,9 @@
         chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
     }
 
+    /* ---------------------------------------------------------------- */
+    /* Theme toggle (light / dark), persisted in localStorage           */
+    /* ---------------------------------------------------------------- */
 
     (function initTheme() {
         const btn = document.getElementById('theme-toggle');
@@ -53,6 +82,9 @@
         });
     })();
 
+    /* ---------------------------------------------------------------- */
+    /* Mobile sidebar drawer (only runs if #members-sidebar exists)      */
+    /* ---------------------------------------------------------------- */
 
     (function initSidebar() {
         const sidebar = document.getElementById('members-sidebar');
@@ -86,7 +118,12 @@
         });
     })();
 
-    
+    /* ---------------------------------------------------------------- */
+    /* WhatsApp/Chrome WebM duration fix                                 */
+    /* Chrome's MediaRecorder omits duration in the EBML header, so the  */
+    /* <audio> element reports Infinity/NaN until we force a seek.       */
+    /* ---------------------------------------------------------------- */
+
     function fixAudioDuration(audio) {
         if (!audio || audio.dataset.durationFixed) return;
 
@@ -114,7 +151,12 @@
         (scope || document).querySelectorAll('audio.voice-note').forEach(fixAudioDuration);
     }
 
-    
+    /* ---------------------------------------------------------------- */
+    /* Rendering a message bubble                                        */
+    /* Matches _serialize_message() in views.py:                        */
+    /*   { id, sender, type, time, is_me, text? , audio_url?, audio_type? } */
+    /* ---------------------------------------------------------------- */
+
     function renderMessage(m) {
         const wrap = document.createElement('div');
         wrap.className = 'msg ' + (m.is_me ? 'me' : 'them');
@@ -130,6 +172,17 @@
                 + '<source src="' + m.audio_url + '" type="' + (m.audio_type || 'audio/webm') + '">'
                 + '</audio>';
             inner += '<div class="voice-error hidden"></div>';
+        } else if (m.type === 'video') {
+            inner += '<video class="video-note" controls preload="metadata" src="' + m.video_url + '"></video>';
+        } else if (m.type === 'photo') {
+            inner += '<img class="photo-msg" src="' + m.photo_url + '" alt="photo">';
+        } else if (m.type === 'document') {
+            inner += '<a class="doc-msg" href="' + m.document_url + '" download="' + escapeHtml(m.document_name) + '">'
+                + '<span class="doc-icon">📄</span>'
+                + '<span class="doc-name">' + escapeHtml(m.document_name) + '</span>'
+                + '</a>';
+        } else if (m.type === 'sticker') {
+            inner += '<img class="sticker-img" src="' + m.sticker_url + '" alt="sticker">';
         } else {
             inner += '<div class="text">' + escapeHtml(m.text) + '</div>';
         }
@@ -143,6 +196,11 @@
         return wrap;
     }
 
+    /* ---------------------------------------------------------------- */
+    /* Sending a text message                                            */
+    /* send_message only returns {"ok": true}, so on success we          */
+    /* immediately poll for anything newer than lastId to pick it up.    */
+    /* ---------------------------------------------------------------- */
 
     let lastId = typeof LAST_ID !== 'undefined' ? LAST_ID : 0;
     let polling = false;
@@ -183,6 +241,9 @@
         });
     }
 
+    /* ---------------------------------------------------------------- */
+    /* Polling for new messages                                          */
+    /* ---------------------------------------------------------------- */
 
     function pollForMessages() {
         if (polling) return; // avoid overlapping requests
@@ -211,6 +272,9 @@
 
     setInterval(pollForMessages, 3000);
 
+    /* ---------------------------------------------------------------- */
+    /* Polling for member online/offline status                          */
+    /* ---------------------------------------------------------------- */
 
     function pollForMembers() {
         if (typeof MEMBERS_URL === 'undefined') return;
@@ -240,6 +304,9 @@
         setInterval(pollForMembers, 5000);
     }
 
+    /* ---------------------------------------------------------------- */
+    /* Voice recording                                                   */
+    /* ---------------------------------------------------------------- */
 
     (function initVoiceRecording() {
         const micBtn = document.getElementById('mic-btn');
@@ -368,6 +435,185 @@
         }
     })();
 
+    /* ---------------------------------------------------------------- */
+    /* Generic "upload a file to an endpoint, render what comes back"    */
+    /* helper - used by every attach-menu option below.                 */
+    /* ---------------------------------------------------------------- */
+
+    function uploadFile(url, fieldName, file, errorPrefix) {
+        const formData = new FormData();
+        formData.append(fieldName, file);
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: formData
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data && data.ok && data.message) {
+                    lastId = Math.max(lastId, data.message.id);
+                    renderMessage(data.message);
+                    scrollToBottom(true);
+                } else if (data && data.error) {
+                    alert(data.error);
+                }
+            })
+            .catch(function (err) {
+                console.error(errorPrefix + ':', err);
+            });
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* Attach menu ("+" button) - WhatsApp-style popup with Document,    */
+    /* Photos & videos, Camera, Audio, and a shortcut into the sticker   */
+    /* picker. Each option just clicks its matching hidden <input>,      */
+    /* except "New sticker" which opens the sticker picker instead.      */
+    /* ---------------------------------------------------------------- */
+
+    (function initAttachMenu() {
+        const attachBtn = document.getElementById('attach-btn');
+        const menu = document.getElementById('attach-menu');
+        if (!attachBtn || !menu) return;
+
+        const videoInput = document.getElementById('video-input');
+        const cameraInput = document.getElementById('camera-input');
+        const audioFileInput = document.getElementById('audio-file-input');
+        const documentInput = document.getElementById('document-input');
+        const stickerPicker = document.getElementById('sticker-picker');
+        const stickerOption = document.getElementById('attach-sticker-option');
+
+        function closeMenu() {
+            menu.classList.add('hidden');
+            attachBtn.classList.remove('open');
+        }
+
+        attachBtn.addEventListener('click', function () {
+            menu.classList.toggle('hidden');
+            attachBtn.classList.toggle('open', !menu.classList.contains('hidden'));
+        });
+
+        menu.querySelectorAll('.attach-option[data-target]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                closeMenu();
+                const input = document.getElementById(btn.dataset.target);
+                if (input) input.click();
+            });
+        });
+
+        if (stickerOption && stickerPicker) {
+            stickerOption.addEventListener('click', function () {
+                closeMenu();
+                stickerPicker.classList.remove('hidden');
+            });
+        }
+
+        // "Photos & videos" and "Camera" share one input type (image or
+        // video); route to send-photo or send-video based on what the
+        // picked file actually is.
+        function handleMediaPick(input) {
+            input.addEventListener('change', function () {
+                const file = input.files && input.files[0];
+                input.value = '';
+                if (!file) return;
+
+                if (file.type.startsWith('image/')) {
+                    uploadFile(SEND_PHOTO_URL, 'photo', file, 'Failed to upload photo');
+                } else if (file.type.startsWith('video/')) {
+                    uploadFile(SEND_VIDEO_URL, 'video', file, 'Failed to upload video');
+                } else {
+                    alert('Please choose a photo or video file.');
+                }
+            });
+        }
+
+        if (videoInput) handleMediaPick(videoInput);
+        if (cameraInput) handleMediaPick(cameraInput);
+
+        if (audioFileInput) {
+            audioFileInput.addEventListener('change', function () {
+                const file = audioFileInput.files && audioFileInput.files[0];
+                audioFileInput.value = '';
+                if (!file) return;
+                // send_voice already accepts any file with an allowed
+                // audio mime type, regardless of whether it came from
+                // the mic recorder or a plain file picker.
+                uploadFile(SEND_VOICE_URL, 'audio', file, 'Failed to upload audio file');
+            });
+        }
+
+        if (documentInput) {
+            documentInput.addEventListener('change', function () {
+                const file = documentInput.files && documentInput.files[0];
+                documentInput.value = '';
+                if (!file) return;
+                uploadFile(SEND_DOCUMENT_URL, 'document', file, 'Failed to upload document');
+            });
+        }
+
+        // Close the menu if you tap/click elsewhere
+        document.addEventListener('click', function (e) {
+            if (menu.classList.contains('hidden')) return;
+            if (menu.contains(e.target) || attachBtn.contains(e.target)) return;
+            closeMenu();
+        });
+    })();
+
+    /* ---------------------------------------------------------------- */
+    /* Sticker picker                                                    */
+    /* ---------------------------------------------------------------- */
+
+    (function initStickers() {
+        const stickerBtn = document.getElementById('sticker-btn');
+        const picker = document.getElementById('sticker-picker');
+        if (!stickerBtn || !picker) return;
+
+        stickerBtn.addEventListener('click', function () {
+            picker.classList.toggle('hidden');
+        });
+
+        picker.querySelectorAll('.sticker-option').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                const sticker = btn.dataset.sticker;
+                picker.classList.add('hidden');
+
+                fetch(SEND_STICKER_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': CSRF_TOKEN,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: 'sticker=' + encodeURIComponent(sticker)
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (data && data.ok && data.message) {
+                            lastId = Math.max(lastId, data.message.id);
+                            renderMessage(data.message);
+                            scrollToBottom(true);
+                        }
+                    })
+                    .catch(function (err) {
+                        console.error('Failed to send sticker:', err);
+                    });
+            });
+        });
+
+        // Close the picker if you tap/click elsewhere
+        document.addEventListener('click', function (e) {
+            if (picker.classList.contains('hidden')) return;
+            if (picker.contains(e.target) || stickerBtn.contains(e.target)) return;
+            picker.classList.add('hidden');
+        });
+    })();
+
+    /* ---------------------------------------------------------------- */
+    /* Init                                                              */
+    /* ---------------------------------------------------------------- */
 
     fixAllVoiceNotes(chatBox);
     scrollToBottom(false);

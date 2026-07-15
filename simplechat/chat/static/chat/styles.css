@@ -4,6 +4,13 @@
 
 * { box-sizing: border-box; }
 
+/* Generic utility - some elements (video-input, sticker-picker, the
+   recording banner) get shown/hidden via classList.toggle('hidden') in
+   room.js. This one rule covers all of them; the more specific
+   #id.hidden rules below just add their own display type back when not
+   hidden (e.g. #sticker-picker needs display:grid, not the default). */
+.hidden { display: none !important; }
+
 :root {
     --bg-app: #e9edf1;
     --bg-surface: #ffffff;
@@ -249,7 +256,7 @@ button:active { transform: scale(0.98); }
 #members-sidebar h3 {
     margin: 0;
     padding: 10px 12px 6px;
-    font-size: 15px;
+    font-size: 10.5px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
@@ -267,7 +274,7 @@ button:active { transform: scale(0.98); }
     gap: 7px;
     padding: 6px 8px;
     border-radius: 8px;
-    font-size: 15px;
+    font-size: 12.5px;
 }
 
 #members-list li:hover { background: var(--bg-chat); }
@@ -493,6 +500,268 @@ audio.voice-note {
 }
 
 .voice-error.hidden { display: none; }
+
+/* ---------- Attach ("+") button and its popup menu ---------- */
+
+#attach-btn {
+    width: 46px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    background: var(--bg-chat);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    font-size: 24px;
+    line-height: 1;
+    font-weight: 400;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.15s ease, background 0.15s ease;
+}
+
+#attach-btn:hover { background: var(--input-border); }
+
+/* Rotate into an "x" while the menu is open, like WhatsApp's + button */
+#attach-btn.open { transform: rotate(45deg); }
+
+#attach-menu {
+    position: fixed;
+    left: 24px;
+    bottom: 90px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--bg-surface);
+    border: 1px solid var(--surface-border);
+    border-radius: 16px;
+    padding: 8px;
+    box-shadow: var(--shadow-lg);
+    z-index: 10;
+    min-width: 190px;
+}
+
+#attach-menu.hidden { display: none; }
+
+.attach-option {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 9px 8px;
+    margin: 0;
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+}
+
+.attach-option:hover { background: var(--bg-chat); }
+
+.attach-option-icon {
+    width: 34px;
+    height: 34px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+}
+
+.doc-tint { background: #7f66ff; }
+.media-tint { background: #4e9eff; }
+.camera-tint { background: #e0538a; }
+.audio-tint { background: #f2762e; }
+.sticker-tint { background: #ffcc4d33; }
+
+/* ---------- Video / photo / document messages ---------- */
+
+video.video-note {
+    display: block;
+    width: min(260px, 60vw);
+    border-radius: 10px;
+    margin: 2px 0;
+}
+
+.photo-msg {
+    display: block;
+    width: min(260px, 60vw);
+    border-radius: 10px;
+    margin: 2px 0;
+}
+
+.doc-msg {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 4px 2px;
+    text-decoration: none;
+    color: var(--bubble-text, var(--text-primary));
+    max-width: min(260px, 60vw);
+}
+
+.doc-msg:hover { text-decoration: underline; }
+
+.doc-icon { font-size: 26px; flex-shrink: 0; }
+
+.doc-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13.5px;
+}
+
+/* ---------- Stickers ---------- */
+
+#sticker-btn {
+    width: 46px;
+    padding: 0;
+    margin: 0;
+    border-radius: 50%;
+    background: var(--bg-chat);
+    color: var(--text-primary);
+    border: 1px solid var(--input-border);
+    font-size: 18px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#sticker-btn:hover { background: var(--input-border); }
+
+#sticker-picker {
+    position: fixed;
+    left: 50%;
+    bottom: 90px;
+    transform: translateX(-50%);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    background: var(--bg-surface);
+    border: 1px solid var(--surface-border);
+    border-radius: 16px;
+    padding: 12px;
+    box-shadow: var(--shadow-lg);
+    z-index: 10;
+}
+
+#sticker-picker.hidden { display: none; }
+
+.sticker-option {
+    width: 56px;
+    height: 56px;
+    padding: 6px;
+    margin: 0;
+    border-radius: 10px;
+    background: var(--bg-chat);
+    border: 1px solid transparent;
+}
+
+.sticker-option:hover { border-color: var(--accent); background: var(--input-border); }
+
+.sticker-option img {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.sticker-img {
+    display: block;
+    width: 96px;
+    height: 96px;
+}
+
+/* Sticker/video bubbles read better without the usual bubble padding/bg */
+.msg:has(> .sticker-img) {
+    background: transparent;
+    box-shadow: none;
+    padding: 0 0 4px;
+}
+
+/* ---------- Signup: phone numbers ---------- */
+
+.auth-card-wide { max-width: 480px; }
+
+.auth-subtext {
+    font-size: 13.5px;
+    color: var(--text-secondary);
+    margin: -8px 0 14px;
+}
+
+.phone-numbers { margin: 10px 0 4px; }
+
+.phone-numbers-label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+
+.phone-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.phone-country {
+    flex: 0 0 46%;
+    width: auto;
+    margin: 0;
+}
+
+.phone-number {
+    flex: 1;
+    width: auto;
+    margin: 0;
+}
+
+.phone-remove {
+    flex: 0 0 40px;
+    width: 40px;
+    padding: 0;
+    margin: 0;
+    border-radius: 10px;
+    background: var(--bg-chat);
+    color: var(--text-secondary);
+    border: 1px solid var(--input-border);
+    font-size: 18px;
+}
+
+.phone-remove:hover { background: var(--input-border); }
+
+.add-phone-btn {
+    width: auto;
+    background: transparent;
+    color: var(--accent);
+    border: 1px dashed var(--input-border);
+    font-size: 13px;
+    padding: 8px 14px;
+    margin: 2px 0 4px;
+}
+
+.add-phone-btn:hover { background: var(--bg-chat); }
+
+/* ---------- Form error messages (e.g. pending-approval login message) --- */
+
+ul.errorlist {
+    list-style: none;
+    margin: 0 0 10px;
+    padding: 10px 12px;
+    background: rgba(225, 57, 57, 0.1);
+    border: 1px solid rgba(225, 57, 57, 0.3);
+    border-radius: 10px;
+    color: #e13939;
+    font-size: 13px;
+}
+
+ul.errorlist li { margin: 0; }
 
 /* ===========================================================
    Responsive breakpoints: mobiles -> tablets -> laptops ->

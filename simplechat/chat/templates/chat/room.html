@@ -65,6 +65,17 @@
                                     {% endif %}
                                 </audio>
                                 <div class="voice-error hidden"></div>
+                            {% elif m.message_type == 'video' %}
+                                <video class="video-note" controls preload="metadata" src="{{ m.video.url }}"></video>
+                            {% elif m.message_type == 'photo' %}
+                                <img class="photo-msg" src="{{ m.photo.url }}" alt="photo">
+                            {% elif m.message_type == 'document' %}
+                                <a class="doc-msg" href="{{ m.document.url }}" download="{{ m.document_name }}">
+                                    <span class="doc-icon">📄</span>
+                                    <span class="doc-name">{{ m.document_name }}</span>
+                                </a>
+                            {% elif m.message_type == 'sticker' %}
+                                <img class="sticker-img" src="{% static 'chat/stickers/'|add:m.sticker %}" alt="sticker">
                             {% else %}
                                 <div class="text">{{ m.text }}</div>
                             {% endif %}
@@ -75,12 +86,68 @@
 
                 <form id="send-form">
                     {% csrf_token %}
+                    <button type="button" id="attach-btn" title="Attach">
+                        <span class="attach-icon">+</span>
+                    </button>
+                    <button type="button" id="sticker-btn" title="Send a sticker">
+                        <span class="sticker-icon">😊</span>
+                    </button>
                     <input type="text" id="text-input" placeholder="Write a message" autocomplete="off">
                     <button type="button" id="mic-btn" title="Record a voice message">
                         <span class="mic-icon">🎤</span>
                     </button>
                     <button type="submit">Send</button>
                 </form>
+
+                <!-- Hidden pickers, triggered from the attach menu below -->
+                <input type="file" id="video-input" accept="image/*,video/*" class="hidden">
+                <input type="file" id="camera-input" accept="image/*,video/*" capture="environment" class="hidden">
+                <input type="file" id="audio-file-input" accept="audio/*" class="hidden">
+                <input type="file" id="document-input" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar" class="hidden">
+
+                <div id="attach-menu" class="hidden">
+                    <button type="button" class="attach-option" data-target="document-input">
+                        <span class="attach-option-icon doc-tint">📄</span>
+                        <span>Document</span>
+                    </button>
+                    <button type="button" class="attach-option" data-target="video-input">
+                        <span class="attach-option-icon media-tint">🖼️</span>
+                        <span>Photos &amp; videos</span>
+                    </button>
+                    <button type="button" class="attach-option" data-target="camera-input">
+                        <span class="attach-option-icon camera-tint">📷</span>
+                        <span>Camera</span>
+                    </button>
+                    <button type="button" class="attach-option" data-target="audio-file-input">
+                        <span class="attach-option-icon audio-tint">🎧</span>
+                        <span>Audio</span>
+                    </button>
+                    <button type="button" id="attach-sticker-option" class="attach-option">
+                        <span class="attach-option-icon sticker-tint">😊</span>
+                        <span>New sticker</span>
+                    </button>
+                </div>
+
+                <div id="sticker-picker" class="hidden">
+                    <button type="button" class="sticker-option" data-sticker="thumbs_up.svg">
+                        <img src="{% static 'chat/stickers/thumbs_up.svg' %}" alt="thumbs up">
+                    </button>
+                    <button type="button" class="sticker-option" data-sticker="heart.svg">
+                        <img src="{% static 'chat/stickers/heart.svg' %}" alt="heart">
+                    </button>
+                    <button type="button" class="sticker-option" data-sticker="laugh.svg">
+                        <img src="{% static 'chat/stickers/laugh.svg' %}" alt="laugh">
+                    </button>
+                    <button type="button" class="sticker-option" data-sticker="fire.svg">
+                        <img src="{% static 'chat/stickers/fire.svg' %}" alt="fire">
+                    </button>
+                    <button type="button" class="sticker-option" data-sticker="clap.svg">
+                        <img src="{% static 'chat/stickers/clap.svg' %}" alt="clap">
+                    </button>
+                    <button type="button" class="sticker-option" data-sticker="ok_hand.svg">
+                        <img src="{% static 'chat/stickers/ok_hand.svg' %}" alt="ok hand">
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -100,6 +167,10 @@
         const SEND_URL = "{% url 'send_message' %}";
         const MESSAGES_URL = "{% url 'get_messages' %}";
         const MEMBERS_URL = "{% url 'get_members' %}";
+        const SEND_VIDEO_URL = "{% url 'send_video' %}";
+        const SEND_PHOTO_URL = "{% url 'send_photo' %}";
+        const SEND_DOCUMENT_URL = "{% url 'send_document' %}";
+        const SEND_STICKER_URL = "{% url 'send_sticker' %}";
         const LAST_ID = {% if messages %}{{ messages.last.id }}{% else %}0{% endif %};
     </script>
     <script src="{% static 'chat/room.js' %}"></script>

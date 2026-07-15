@@ -16,15 +16,62 @@
 </head>
 <body>
     <div class="container auth">
-        <div class="auth-card">
+        <div class="auth-card auth-card-wide">
             <h1>Create your account</h1>
+            <p class="auth-subtext">New accounts are reviewed by an admin before you can log in.</p>
             <form method="post">
                 {% csrf_token %}
                 {{ form.as_p }}
+
+                <div class="phone-numbers">
+                    <label class="phone-numbers-label">Phone number(s)</label>
+                    <div id="phone-rows">
+                        <div class="phone-row">
+                            <select name="phone_country" class="phone-country">
+                                {% for iso2, label in countries %}
+                                    <option value="{{ iso2 }}" {% if iso2 == "EG" %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="text" name="phone_number" class="phone-number" placeholder="Phone number" inputmode="tel">
+                            <button type="button" class="phone-remove" title="Remove">&times;</button>
+                        </div>
+                    </div>
+                    <button type="button" id="add-phone-row" class="add-phone-btn">+ Add another number</button>
+                </div>
+
                 <button type="submit">Sign Up</button>
             </form>
             <p>Already have an account? <a href="{% url 'login' %}">Login</a></p>
         </div>
     </div>
+
+    <script>
+        (function () {
+            const rowsWrap = document.getElementById('phone-rows');
+            const addBtn = document.getElementById('add-phone-row');
+            if (!rowsWrap || !addBtn) return;
+
+            function wireRemove(row) {
+                const removeBtn = row.querySelector('.phone-remove');
+                removeBtn.addEventListener('click', function () {
+                    if (rowsWrap.children.length > 1) {
+                        row.remove();
+                    } else {
+                        row.querySelector('.phone-number').value = '';
+                    }
+                });
+            }
+
+            rowsWrap.querySelectorAll('.phone-row').forEach(wireRemove);
+
+            addBtn.addEventListener('click', function () {
+                const first = rowsWrap.querySelector('.phone-row');
+                const clone = first.cloneNode(true);
+                clone.querySelector('.phone-number').value = '';
+                rowsWrap.appendChild(clone);
+                wireRemove(clone);
+            });
+        })();
+    </script>
 </body>
 </html>

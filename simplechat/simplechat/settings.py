@@ -89,6 +89,13 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        # SQLite's default busy-timeout is short; under a burst of
+        # concurrent requests (several voice/video messages loading at
+        # once) that was enough to trip "database is locked" errors.
+        # 20s gives a brief write time to finish instead of failing.
+        'OPTIONS': {
+            'timeout': 20,
+        },
     }
 }
 
@@ -136,6 +143,24 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # a couple of minutes of compressed voice audio).
 MAX_VOICE_MESSAGE_BYTES = 5 * 1024 * 1024
 
+# Video messages: generous but still bounded (25 MB, roughly a
+# 30-60 second clip at typical phone-camera compression).
+MAX_VIDEO_MESSAGE_BYTES = 25 * 1024 * 1024
+
+# Photos: phone camera photos are usually 2-8 MB.
+MAX_PHOTO_MESSAGE_BYTES = 10 * 1024 * 1024
+
+# Documents (PDFs, Office files, zips, etc).
+MAX_DOCUMENT_MESSAGE_BYTES = 20 * 1024 * 1024
+
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'room'
 LOGOUT_REDIRECT_URL = 'login'
+
+# Lets AuthenticationForm.confirm_login_allowed() give a specific
+# "pending approval" / "rejected" message for inactive accounts, instead
+# of Django's generic "invalid credentials" message (see
+# chat/backends.py and PendingAwareAuthenticationForm in chat/forms.py).
+AUTHENTICATION_BACKENDS = [
+    'chat.backends.AllowInactiveAuthBackend',
+]
