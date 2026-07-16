@@ -36,7 +36,33 @@ SECRET_KEY = 'django-insecure-(sgqzsry#sd*(w6--t_%x6qflfoz#xzov16tobmqjn^2gu_5=l
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    'localhost',
+    '127.0.0.1',
+    # ngrok's free tier gives you a new random subdomain each time you
+    # start a tunnel, so this wildcards both of their domains rather
+    # than hardcoding one URL that would stop working on your next run.
+    '.ngrok-free.app',
+    '.ngrok-free.dev',
+    '.ngrok.io',
+    '.ngrok.app',
+]
+
+# Django rejects cross-origin POSTs (login, signup, sending messages...)
+# unless the origin is explicitly trusted. ngrok serves your app over
+# https while Django itself still only knows about plain http, so this
+# is required for forms/fetch POSTs to work through the tunnel at all.
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.ngrok-free.app',
+    'https://*.ngrok-free.dev',
+    'https://*.ngrok.io',
+    'https://*.ngrok.app',
+]
+
+# ngrok terminates TLS and forwards plain http to your local server, so
+# without this Django would otherwise think every request is insecure
+# even though the person is actually on https via the tunnel.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 
 # Application definition
