@@ -24,6 +24,10 @@ def document_message_path(instance, filename):
     return f"document_messages/{instance.sender}/{filename}"
 
 
+def custom_sticker_path(instance, filename):
+    return f"custom_stickers/{instance.created_by}/{filename}"
+
+
 class Message(models.Model):
     TEXT = "text"
     AUDIO = "audio"
@@ -31,6 +35,7 @@ class Message(models.Model):
     PHOTO = "photo"
     DOCUMENT = "document"
     STICKER = "sticker"
+    POLL = "poll"
     MESSAGE_TYPES = [
         (TEXT, "Text"),
         (AUDIO, "Audio"),
@@ -38,6 +43,7 @@ class Message(models.Model):
         (PHOTO, "Photo"),
         (DOCUMENT, "Document"),
         (STICKER, "Sticker"),
+        (POLL, "Poll"),
     ]
 
     sender = models.CharField(max_length=150)
@@ -50,15 +56,23 @@ class Message(models.Model):
     # so it can't collide; this keeps the name the person actually gave the
     # file, so the chat can still show/download it as "report.pdf" etc.
     document_name = models.CharField(max_length=255, blank=True)
-    # For stickers we just store which file in static/chat/stickers/ was
-    # sent (e.g. "thumbs_up.svg") - stickers are a fixed, pre-approved set
-    # bundled with the app, not user uploads, so there's nothing to store
-    # except which one was picked.
+    # For stickers we either reference a file in static/chat/stickers/
+    # (the fixed, pre-approved built-in set - e.g. "thumbs_up.svg") or,
+    # if custom_sticker is set below, one a user created themselves.
     sticker = models.CharField(max_length=64, blank=True)
+    custom_sticker = models.ForeignKey(
+        "CustomSticker", on_delete=models.SET_NULL, null=True, blank=True, related_name="messages"
+    )
     message_type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default=TEXT)
+    # WhatsApp-style soft delete: the row (and its receipts/votes) stays,
+    # but the actual content is wiped and the chat shows a tombstone
+    # instead. See views.delete_message.
+    is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
+        if self.is_deleted:
+            return f"{self.sender}: [deleted]"
         if self.message_type == self.AUDIO:
             return f"{self.sender}: [voice message]"
         if self.message_type == self.VIDEO:
@@ -69,7 +83,82 @@ class Message(models.Model):
             return f"{self.sender}: [document: {self.document_name}]"
         if self.message_type == self.STICKER:
             return f"{self.sender}: [sticker: {self.sticker}]"
+        if self.message_type == self.POLL:
+            return f"{self.sender}: [poll: {self.text[:30]}]"
         return f"{self.sender}: {self.text[:30]}"
+
+
+class MessageReceipt(models.Model):
+    """
+    Per-(message, user) delivery/read/played tracking, powering the
+    WhatsApp-style "info" panel on long-press. There's one group room
+    here rather than 1-to-1 conversations, so "delivered"/"read" is
+    tracked against every other active member, not a single recipient.
+
+    - delivered_at: set the first time this message shows up in that
+      user's /messages/ poll response (see views.get_messages).
+    - read_at: set when the message actually scrolls into view in their
+      chat box (IntersectionObserver in room.js calls /mark-read/).
+    - played_at: audio messages only, set when they actually press play
+      (room.js calls /mark-played/ on the <audio> 'play' event).
+    """
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="receipts")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="message_receipts")
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    played_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("message", "user")
+
+    def __str__(self):
+        return f"receipt: msg {self.message_id} / {self.user.username}"
+
+
+class PollOption(models.Model):
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="poll_options")
+    text = models.CharField(max_length=100)
+    order = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.text
+
+
+class PollVote(models.Model):
+    """
+    One vote per user per poll (single-choice, like a basic WhatsApp
+    poll). `message` is denormalized alongside `option` purely so
+    unique_together can enforce "one vote per user per poll" directly,
+    since Django can't express uniqueness across a FK's own FK.
+    """
+
+    message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="poll_votes")
+    option = models.ForeignKey(PollOption, on_delete=models.CASCADE, related_name="votes")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="poll_votes")
+    voted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("message", "user")
+
+
+class CustomSticker(models.Model):
+    """
+    A sticker someone made themselves by uploading an image (see
+    views.create_sticker). Shared with the whole room, same as the
+    built-in set - once created, anyone can pick it from the sticker
+    picker, not just its creator.
+    """
+
+    created_by = models.CharField(max_length=150)
+    image = models.FileField(upload_to=custom_sticker_path)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"custom sticker by {self.created_by}"
 
 
 class UserPresence(models.Model):

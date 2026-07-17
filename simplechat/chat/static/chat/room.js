@@ -157,17 +157,54 @@
     /*   { id, sender, type, time, is_me, text? , audio_url?, audio_type? } */
     /* ---------------------------------------------------------------- */
 
+    function renderPollOptionsHtml(m) {
+        const poll = m.poll || { options: [], total_votes: 0, voted_option_id: null };
+        let html = '<div class="poll-msg" data-poll-id="' + m.id + '" data-voted-option-id="' + (poll.voted_option_id || '') + '">';
+        html += '<div class="poll-question">📊 ' + escapeHtml(m.question || m.text) + '</div>';
+        html += '<div class="poll-options">';
+        poll.options.forEach(function (opt) {
+            const voted = opt.id === poll.voted_option_id ? ' voted' : '';
+            html += '<button type="button" class="poll-option-row' + voted + '" data-option-id="' + opt.id + '">'
+                + '<span class="poll-option-fill" style="width:' + opt.percent + '%"></span>'
+                + '<span class="poll-option-label">' + escapeHtml(opt.text) + '</span>'
+                + '<span class="poll-option-pct">' + opt.percent + '%</span>'
+                + '</button>';
+        });
+        html += '</div>';
+        html += '<div class="poll-total-votes">' + poll.total_votes + (poll.total_votes === 1 ? ' vote' : ' votes') + '</div>';
+        html += '</div>';
+        return html;
+    }
+
+    function updatePollDom(pollEl, poll) {
+        pollEl.dataset.votedOptionId = poll.voted_option_id || '';
+        poll.options.forEach(function (opt) {
+            const row = pollEl.querySelector('.poll-option-row[data-option-id="' + opt.id + '"]');
+            if (!row) return;
+            row.classList.toggle('voted', opt.id === poll.voted_option_id);
+            row.querySelector('.poll-option-fill').style.width = opt.percent + '%';
+            row.querySelector('.poll-option-pct').textContent = opt.percent + '%';
+        });
+        const totalEl = pollEl.querySelector('.poll-total-votes');
+        if (totalEl) totalEl.textContent = poll.total_votes + (poll.total_votes === 1 ? ' vote' : ' votes');
+    }
+
     function renderMessage(m) {
         const wrap = document.createElement('div');
-        wrap.className = 'msg ' + (m.is_me ? 'me' : 'them');
+        wrap.className = 'msg ' + (m.is_me ? 'me' : 'them') + (m.is_deleted ? ' deleted' : '');
         wrap.dataset.id = m.id;
         wrap.dataset.sender = m.sender;
+        wrap.dataset.type = m.type;
+        wrap.dataset.canDelete = m.can_delete ? '1' : '0';
+        wrap.dataset.canViewInfo = m.can_view_info ? '1' : '0';
 
         let inner = '';
         if (!m.is_me) {
             inner += '<div class="sender">' + escapeHtml(m.sender) + '</div>';
         }
-        if (m.type === 'audio') {
+        if (m.is_deleted) {
+            inner += '<div class="text deleted-text">🚫 This message was deleted</div>';
+        } else if (m.type === 'audio') {
             inner += '<audio class="voice-note" controls preload="metadata">'
                 + '<source src="' + m.audio_url + '" type="' + (m.audio_type || 'audio/webm') + '">'
                 + '</audio>';
@@ -183,6 +220,8 @@
                 + '</a>';
         } else if (m.type === 'sticker') {
             inner += '<img class="sticker-img" src="' + m.sticker_url + '" alt="sticker">';
+        } else if (m.type === 'poll') {
+            inner += renderPollOptionsHtml(m);
         } else {
             inner += '<div class="text">' + escapeHtml(m.text) + '</div>';
         }
@@ -193,6 +232,7 @@
         if (m.type === 'audio') {
             fixAudioDuration(wrap.querySelector('audio.voice-note'));
         }
+        observeForReadReceipt(wrap, m.is_me);
         return wrap;
     }
 
@@ -505,7 +545,8 @@
         });
 
         if (stickerOption && stickerPicker) {
-            stickerOption.addEventListener('click', function () {
+            stickerOption.addEventListener('click', function (e) {
+                e.stopPropagation(); // don't let this reach sticker-picker's outside-click handler
                 closeMenu();
                 stickerPicker.classList.remove('hidden');
             });
@@ -569,39 +610,91 @@
     (function initStickers() {
         const stickerBtn = document.getElementById('sticker-btn');
         const picker = document.getElementById('sticker-picker');
+        const createBtn = document.getElementById('create-sticker-btn');
+        const createInput = document.getElementById('create-sticker-input');
         if (!stickerBtn || !picker) return;
 
         stickerBtn.addEventListener('click', function () {
             picker.classList.toggle('hidden');
         });
 
-        picker.querySelectorAll('.sticker-option').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                const sticker = btn.dataset.sticker;
-                picker.classList.add('hidden');
+        function sendSticker(params) {
+            picker.classList.add('hidden');
+            fetch(SEND_STICKER_URL, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': CSRF_TOKEN,
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: params
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data && data.ok && data.message) {
+                        lastId = Math.max(lastId, data.message.id);
+                        renderMessage(data.message);
+                        scrollToBottom(true);
+                    } else if (data && data.error) {
+                        alert(data.error);
+                    }
+                })
+                .catch(function (err) {
+                    console.error('Failed to send sticker:', err);
+                });
+        }
 
-                fetch(SEND_STICKER_URL, {
+        // Delegated click - covers built-in stickers rendered on load AND
+        // custom ones (server-rendered or added dynamically after upload).
+        picker.addEventListener('click', function (e) {
+            const btn = e.target.closest('.sticker-option');
+            if (!btn || btn === createBtn) return;
+
+            if (btn.dataset.customStickerId) {
+                sendSticker('custom_sticker_id=' + encodeURIComponent(btn.dataset.customStickerId));
+            } else if (btn.dataset.sticker) {
+                sendSticker('sticker=' + encodeURIComponent(btn.dataset.sticker));
+            }
+        });
+
+        // "+" tile - upload an image to turn it into a new sticker anyone
+        // in the room can then pick, including yourself, right away.
+        if (createBtn && createInput) {
+            createBtn.addEventListener('click', function () {
+                createInput.click();
+            });
+
+            createInput.addEventListener('change', function () {
+                const file = createInput.files && createInput.files[0];
+                createInput.value = '';
+                if (!file) return;
+
+                const formData = new FormData();
+                formData.append('image', file);
+
+                fetch(CREATE_STICKER_URL, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-CSRFToken': CSRF_TOKEN,
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: 'sticker=' + encodeURIComponent(sticker)
+                    headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData
                 })
                     .then(function (res) { return res.json(); })
                     .then(function (data) {
-                        if (data && data.ok && data.message) {
-                            lastId = Math.max(lastId, data.message.id);
-                            renderMessage(data.message);
-                            scrollToBottom(true);
+                        if (data && data.ok && data.sticker) {
+                            const btn = document.createElement('button');
+                            btn.type = 'button';
+                            btn.className = 'sticker-option';
+                            btn.dataset.customStickerId = data.sticker.id;
+                            btn.innerHTML = '<img src="' + data.sticker.url + '" alt="custom sticker">';
+                            picker.insertBefore(btn, createBtn);
+                        } else if (data && data.error) {
+                            alert(data.error);
                         }
                     })
                     .catch(function (err) {
-                        console.error('Failed to send sticker:', err);
+                        console.error('Failed to create sticker:', err);
                     });
             });
-        });
+        }
 
         // Close the picker if you tap/click elsewhere
         document.addEventListener('click', function (e) {
@@ -612,9 +705,361 @@
     })();
 
     /* ---------------------------------------------------------------- */
+    /* Read receipts: mark a message read once it actually scrolls into */
+    /* view (not just because it was fetched/delivered).                */
+    /* ---------------------------------------------------------------- */
+
+    const readObserver = ('IntersectionObserver' in window)
+        ? new IntersectionObserver(function (entries) {
+            entries.forEach(function (entry) {
+                if (!entry.isIntersecting) return;
+                const el = entry.target;
+                readObserver.unobserve(el);
+                const id = el.dataset.id;
+                if (!id || typeof MARK_READ_URL_TEMPLATE === 'undefined') return;
+                fetch(MARK_READ_URL_TEMPLATE.replace('0', id), {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' }
+                }).catch(function () { /* non-critical, ignore */ });
+            });
+        }, { root: chatBox, threshold: 0.1 })
+        : null;
+
+    function observeForReadReceipt(wrap, isMe) {
+        if (!readObserver || isMe) return;
+        readObserver.observe(wrap);
+    }
+
+    /* ---------------------------------------------------------------- */
+    /* "Played" tracking - fires once per <audio>/<video>, on first play.*/
+    /* The 'play' event doesn't bubble, so this listens on the capture   */
+    /* phase at chatBox to catch it from any descendant media element.   */
+    /* ---------------------------------------------------------------- */
+
+    chatBox.addEventListener('play', function (e) {
+        const media = e.target;
+        if (!media || (media.tagName !== 'AUDIO' && media.tagName !== 'VIDEO') || media.dataset.playedTracked) return;
+        const wrap = media.closest('.msg');
+        if (!wrap || wrap.classList.contains('me')) return;
+        media.dataset.playedTracked = '1';
+        const id = wrap.dataset.id;
+        if (!id || typeof MARK_PLAYED_URL_TEMPLATE === 'undefined') return;
+        fetch(MARK_PLAYED_URL_TEMPLATE.replace('0', id), {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' }
+        }).catch(function () { /* non-critical, ignore */ });
+    }, true);
+
+
+    /* ---------------------------------------------------------------- */
+    /* Long-press (touch) / right-click (desktop) message action menu.   */
+    /* Delete (own messages, or any message if staff) and Message info   */
+    /* (sender or staff) - matches the WhatsApp long-press pattern.      */
+    /* ---------------------------------------------------------------- */
+
+    (function initMessageMenu() {
+        const menu = document.getElementById('message-menu');
+        const overlay = document.getElementById('message-menu-overlay');
+        const infoBtn = document.getElementById('message-menu-info');
+        const deleteBtn = document.getElementById('message-menu-delete');
+        if (!menu || !overlay) return;
+
+        let activeMessageEl = null;
+        let pressTimer = null;
+
+        function closeMenu() {
+            menu.classList.add('hidden');
+            overlay.classList.remove('visible');
+            activeMessageEl = null;
+        }
+
+        function openMenuFor(msgEl, clientX, clientY) {
+            if (msgEl.classList.contains('deleted')) return; // nothing to do on a tombstone
+            activeMessageEl = msgEl;
+            const canDelete = msgEl.dataset.canDelete === '1';
+            const canViewInfo = msgEl.dataset.canViewInfo === '1';
+            if (!canDelete && !canViewInfo) return;
+
+            infoBtn.style.display = canViewInfo ? '' : 'none';
+            deleteBtn.style.display = canDelete ? '' : 'none';
+
+            menu.classList.remove('hidden');
+            overlay.classList.add('visible');
+
+            // Keep the menu on-screen near the tap/click point.
+            const menuWidth = 190;
+            const menuHeight = 100;
+            let left = clientX;
+            let top = clientY;
+            if (left + menuWidth > window.innerWidth) left = window.innerWidth - menuWidth - 12;
+            if (top + menuHeight > window.innerHeight) top = window.innerHeight - menuHeight - 12;
+            menu.style.left = Math.max(12, left) + 'px';
+            menu.style.top = Math.max(12, top) + 'px';
+        }
+
+        overlay.addEventListener('click', closeMenu);
+
+        // Desktop: right-click
+        chatBox.addEventListener('contextmenu', function (e) {
+            const msgEl = e.target.closest('.msg');
+            if (!msgEl) return;
+            e.preventDefault();
+            openMenuFor(msgEl, e.clientX, e.clientY);
+        });
+
+        // Mobile: long-press via touch timer
+        chatBox.addEventListener('touchstart', function (e) {
+            const msgEl = e.target.closest('.msg');
+            if (!msgEl) return;
+            const touch = e.touches[0];
+            pressTimer = setTimeout(function () {
+                openMenuFor(msgEl, touch.clientX, touch.clientY);
+            }, 550);
+        }, { passive: true });
+
+        ['touchend', 'touchmove', 'touchcancel'].forEach(function (evt) {
+            chatBox.addEventListener(evt, function () {
+                clearTimeout(pressTimer);
+            }, { passive: true });
+        });
+
+        if (deleteBtn) {
+            deleteBtn.addEventListener('click', function () {
+                if (!activeMessageEl) return;
+                const id = activeMessageEl.dataset.id;
+                closeMenu();
+                if (!confirm('Delete this message?')) return;
+
+                fetch(DELETE_URL_TEMPLATE.replace('0', id), {
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' }
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (!data || !data.ok) {
+                            if (data && data.error) alert(data.error);
+                            return;
+                        }
+                        const el = chatBox.querySelector('.msg[data-id="' + id + '"]');
+                        if (!el) return;
+                        el.classList.add('deleted');
+                        el.dataset.canDelete = '0';
+                        const contentEls = el.querySelectorAll(
+                            '.text, .voice-note, .voice-error, .video-note, .photo-msg, .doc-msg, .sticker-img, .poll-msg'
+                        );
+                        contentEls.forEach(function (n) { n.remove(); });
+                        const timeEl = el.querySelector('.time');
+                        const tomb = document.createElement('div');
+                        tomb.className = 'text deleted-text';
+                        tomb.textContent = '🚫 This message was deleted';
+                        el.insertBefore(tomb, timeEl);
+                    })
+                    .catch(function (err) { console.error('Failed to delete message:', err); });
+            });
+        }
+
+        if (infoBtn) {
+            infoBtn.addEventListener('click', function () {
+                if (!activeMessageEl) return;
+                const id = activeMessageEl.dataset.id;
+                closeMenu();
+                openMessageInfo(id);
+            });
+        }
+    })();
+
+    /* ---------------------------------------------------------------- */
+    /* Message info panel (delivered / read / played breakdown)          */
+    /* ---------------------------------------------------------------- */
+
+    function renderMemberList(listEl, members, key) {
+        listEl.innerHTML = '';
+        const present = members.filter(function (m) { return m[key]; });
+        if (!present.length) {
+            const li = document.createElement('li');
+            li.className = 'info-empty';
+            li.textContent = 'No one yet';
+            listEl.appendChild(li);
+            return;
+        }
+        present.forEach(function (m) {
+            const li = document.createElement('li');
+            li.innerHTML = '<span class="info-check">✓</span> ' + escapeHtml(m.username);
+            listEl.appendChild(li);
+        });
+    }
+
+    function openMessageInfo(id) {
+        const panel = document.getElementById('message-info-panel');
+        const overlay = document.getElementById('info-panel-overlay');
+        if (!panel || !overlay) return;
+
+        fetch(MESSAGE_INFO_URL_TEMPLATE.replace('0', id))
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (!data || !data.ok) {
+                    if (data && data.error) alert(data.error);
+                    return;
+                }
+                renderMemberList(document.getElementById('info-read-list'), data.members, 'read');
+                renderMemberList(document.getElementById('info-delivered-list'), data.members, 'delivered');
+                const playedSection = document.getElementById('info-played-section');
+                if (data.show_played) {
+                    playedSection.classList.remove('hidden');
+                    renderMemberList(document.getElementById('info-played-list'), data.members, 'played');
+                } else {
+                    playedSection.classList.add('hidden');
+                }
+                panel.classList.remove('hidden');
+                overlay.classList.add('visible');
+            })
+            .catch(function (err) { console.error('Failed to load message info:', err); });
+    }
+
+    (function initInfoPanelClose() {
+        const panel = document.getElementById('message-info-panel');
+        const overlay = document.getElementById('info-panel-overlay');
+        const closeBtn = document.getElementById('info-panel-close');
+        if (!panel || !overlay) return;
+
+        function close() {
+            panel.classList.add('hidden');
+            overlay.classList.remove('visible');
+        }
+        if (closeBtn) closeBtn.addEventListener('click', close);
+        overlay.addEventListener('click', close);
+    })();
+
+    /* ---------------------------------------------------------------- */
+    /* Poll voting - delegated click on any .poll-option-row, whether it */
+    /* was server-rendered on load or added dynamically afterwards.      */
+    /* ---------------------------------------------------------------- */
+
+    chatBox.addEventListener('click', function (e) {
+        const row = e.target.closest('.poll-option-row');
+        if (!row) return;
+        const pollEl = row.closest('.poll-msg');
+        if (!pollEl) return;
+        const pollId = pollEl.dataset.pollId;
+        const optionId = row.dataset.optionId;
+
+        fetch(VOTE_URL_TEMPLATE.replace('0', pollId), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': CSRF_TOKEN,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: 'option_id=' + encodeURIComponent(optionId)
+        })
+            .then(function (res) { return res.json(); })
+            .then(function (data) {
+                if (data && data.ok && data.message && data.message.poll) {
+                    updatePollDom(pollEl, data.message.poll);
+                } else if (data && data.error) {
+                    alert(data.error);
+                }
+            })
+            .catch(function (err) { console.error('Failed to vote:', err); });
+    });
+
+    /* ---------------------------------------------------------------- */
+    /* Poll creation panel, opened from the attach menu                  */
+    /* ---------------------------------------------------------------- */
+
+    (function initPollCompose() {
+        const pollOption = document.getElementById('attach-poll-option');
+        const panel = document.getElementById('poll-compose');
+        if (!pollOption || !panel) return;
+
+        const questionInput = document.getElementById('poll-question');
+        const rowsWrap = document.getElementById('poll-option-rows');
+        const addBtn = document.getElementById('poll-add-option');
+        const cancelBtn = document.getElementById('poll-cancel');
+        const createBtn = document.getElementById('poll-create');
+
+        function resetPanel() {
+            questionInput.value = '';
+            rowsWrap.innerHTML =
+                '<div class="poll-option-input-row"><input type="text" class="poll-option-input" placeholder="Option 1" maxlength="100"></div>'
+                + '<div class="poll-option-input-row"><input type="text" class="poll-option-input" placeholder="Option 2" maxlength="100"></div>';
+        }
+
+        pollOption.addEventListener('click', function () {
+            const attachMenu = document.getElementById('attach-menu');
+            if (attachMenu) attachMenu.classList.add('hidden');
+            const attachBtn = document.getElementById('attach-btn');
+            if (attachBtn) attachBtn.classList.remove('open');
+            resetPanel();
+            panel.classList.remove('hidden');
+            questionInput.focus();
+        });
+
+        if (cancelBtn) {
+            cancelBtn.addEventListener('click', function () {
+                panel.classList.add('hidden');
+            });
+        }
+
+        if (addBtn) {
+            addBtn.addEventListener('click', function () {
+                const count = rowsWrap.querySelectorAll('.poll-option-input').length;
+                if (count >= 10) return;
+                const row = document.createElement('div');
+                row.className = 'poll-option-input-row';
+                row.innerHTML = '<input type="text" class="poll-option-input" placeholder="Option ' + (count + 1) + '" maxlength="100">';
+                rowsWrap.appendChild(row);
+            });
+        }
+
+        if (createBtn) {
+            createBtn.addEventListener('click', function () {
+                const question = questionInput.value.trim();
+                const options = Array.from(rowsWrap.querySelectorAll('.poll-option-input'))
+                    .map(function (inp) { return inp.value.trim(); })
+                    .filter(Boolean);
+
+                if (!question) { alert('Please enter a question.'); return; }
+                if (options.length < 2) { alert('Please enter at least 2 options.'); return; }
+
+                const params = new URLSearchParams();
+                params.append('question', question);
+                options.forEach(function (o) { params.append('options', o); });
+
+                fetch(SEND_POLL_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                        'X-CSRFToken': CSRF_TOKEN,
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: params.toString()
+                })
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) {
+                        if (data && data.ok && data.message) {
+                            panel.classList.add('hidden');
+                            lastId = Math.max(lastId, data.message.id);
+                            renderMessage(data.message);
+                            scrollToBottom(true);
+                        } else if (data && data.error) {
+                            alert(data.error);
+                        }
+                    })
+                    .catch(function (err) { console.error('Failed to create poll:', err); });
+            });
+        }
+    })();
+
+    /* ---------------------------------------------------------------- */
     /* Init                                                              */
     /* ---------------------------------------------------------------- */
 
     fixAllVoiceNotes(chatBox);
+    // Wire up read-receipt tracking for the messages that were already
+    // in the page on load (renderMessage() only covers ones added later).
+    chatBox.querySelectorAll('.msg:not(.me)').forEach(function (el) {
+        observeForReadReceipt(el, false);
+    });
     scrollToBottom(false);
 })();

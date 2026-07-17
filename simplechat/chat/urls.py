@@ -24,4 +24,11 @@ urlpatterns = [
     path("send-photo/", views.send_photo, name="send_photo"),
     path("send-document/", views.send_document, name="send_document"),
     path("send-sticker/", views.send_sticker, name="send_sticker"),
+    path("create-sticker/", views.create_sticker, name="create_sticker"),
+    path("messages/<int:message_id>/delete/", views.delete_message, name="delete_message"),
+    path("messages/<int:message_id>/mark-read/", views.mark_read, name="mark_read"),
+    path("messages/<int:message_id>/mark-played/", views.mark_played, name="mark_played"),
+    path("messages/<int:message_id>/info/", views.message_info, name="message_info"),
+    path("send-poll/", views.send_poll, name="send_poll"),
+    path("messages/<int:message_id>/vote/", views.vote_poll, name="vote_poll"),
 ]

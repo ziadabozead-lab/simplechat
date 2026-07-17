@@ -48,9 +48,16 @@
             <div class="chat-area">
                 <div id="chat-box">
                     {% for m in messages %}
-                        <div class="msg {% if m.sender == user.username %}me{% else %}them{% endif %}" data-id="{{ m.id }}" data-sender="{{ m.sender }}">
+                        <div class="msg {% if m.sender == user.username %}me{% else %}them{% endif %}{% if m.is_deleted %} deleted{% endif %}"
+                             data-id="{{ m.id }}"
+                             data-sender="{{ m.sender }}"
+                             data-can-delete="{% if m.is_deleted %}0{% else %}{% if m.sender == user.username %}1{% else %}{% if user.is_staff %}1{% else %}0{% endif %}{% endif %}{% endif %}"
+                             data-can-view-info="{% if m.sender == user.username %}1{% else %}{% if user.is_staff %}1{% else %}0{% endif %}{% endif %}"
+                             data-type="{{ m.message_type }}">
                             {% if m.sender != user.username %}<div class="sender">{{ m.sender }}</div>{% endif %}
-                            {% if m.message_type == 'audio' %}
+                            {% if m.is_deleted %}
+                                <div class="text deleted-text">🚫 This message was deleted</div>
+                            {% elif m.message_type == 'audio' %}
                                 <audio class="voice-note" controls preload="metadata">
                                     {% if m.audio.name|slice:"-4:" == "webm" %}
                                         <source src="{{ m.audio.url }}" type="audio/webm">
@@ -76,6 +83,20 @@
                                 </a>
                             {% elif m.message_type == 'sticker' %}
                                 <img class="sticker-img" src="{% static 'chat/stickers/'|add:m.sticker %}" alt="sticker">
+                            {% elif m.message_type == 'poll' %}
+                                <div class="poll-msg" data-poll-id="{{ m.id }}" data-voted-option-id="{{ m.my_vote_option_id|default:'' }}">
+                                    <div class="poll-question">📊 {{ m.text }}</div>
+                                    <div class="poll-options">
+                                        {% for opt in m.poll_options.all %}
+                                            <button type="button" class="poll-option-row{% if opt.id == m.my_vote_option_id %} voted{% endif %}" data-option-id="{{ opt.id }}">
+                                                <span class="poll-option-fill" style="width:{{ opt.pct }}%"></span>
+                                                <span class="poll-option-label">{{ opt.text }}</span>
+                                                <span class="poll-option-pct">{{ opt.pct }}%</span>
+                                            </button>
+                                        {% endfor %}
+                                    </div>
+                                    <div class="poll-total-votes">{{ m.total_votes }} vote{{ m.total_votes|pluralize }}</div>
+                                </div>
                             {% else %}
                                 <div class="text">{{ m.text }}</div>
                             {% endif %}
@@ -84,20 +105,22 @@
                     {% endfor %}
                 </div>
 
-                <form id="send-form">
-                    {% csrf_token %}
-                    <button type="button" id="attach-btn" title="Attach">
-                        <span class="attach-icon">+</span>
-                    </button>
-                    <button type="button" id="sticker-btn" title="Send a sticker">
-                        <span class="sticker-icon">😊</span>
-                    </button>
-                    <input type="text" id="text-input" placeholder="Write a message" autocomplete="off">
-                    <button type="button" id="mic-btn" title="Record a voice message">
-                        <span class="mic-icon">🎤</span>
-                    </button>
-                    <button type="submit">Send</button>
-                </form>
+                <div id="toolbar-pill">
+                    <form id="send-form">
+                        {% csrf_token %}
+                        <button type="button" id="attach-btn" title="Attach">
+                            <span class="attach-icon">+</span>
+                        </button>
+                        <button type="button" id="sticker-btn" title="Send a sticker">stickers</button>
+                        <input type="text" id="text-input" placeholder="write message" autocomplete="off">
+                        <button type="button" id="mic-btn" title="Record a voice message">
+                            <span class="mic-icon">🎤</span>
+                        </button>
+                        <button type="submit" id="send-btn" title="Send">
+                            <span class="send-icon">➤</span>
+                        </button>
+                    </form>
+                </div>
 
                 <!-- Hidden pickers, triggered from the attach menu below -->
                 <input type="file" id="video-input" accept="image/*,video/*" class="hidden">
@@ -121,6 +144,10 @@
                     <button type="button" class="attach-option" data-target="audio-file-input">
                         <span class="attach-option-icon audio-tint">🎧</span>
                         <span>Audio</span>
+                    </button>
+                    <button type="button" id="attach-poll-option" class="attach-option">
+                        <span class="attach-option-icon poll-tint">📊</span>
+                        <span>Poll</span>
                     </button>
                     <button type="button" id="attach-sticker-option" class="attach-option">
                         <span class="attach-option-icon sticker-tint">😊</span>
@@ -147,7 +174,65 @@
                     <button type="button" class="sticker-option" data-sticker="ok_hand.svg">
                         <img src="{% static 'chat/stickers/ok_hand.svg' %}" alt="ok hand">
                     </button>
+                    {% for cs in custom_stickers %}
+                        <button type="button" class="sticker-option" data-custom-sticker-id="{{ cs.id }}">
+                            <img src="{{ cs.image.url }}" alt="custom sticker">
+                        </button>
+                    {% endfor %}
+                    <button type="button" id="create-sticker-btn" class="sticker-option sticker-create-tile" title="Create a new sticker">
+                        <span>+</span>
+                    </button>
                 </div>
+                <input type="file" id="create-sticker-input" accept="image/png,image/jpeg,image/webp" class="hidden">
+
+                <!-- Poll creation panel -->
+                <div id="poll-compose" class="hidden">
+                    <h4>Create a poll</h4>
+                    <input type="text" id="poll-question" placeholder="Ask a question" maxlength="150">
+                    <div id="poll-option-rows">
+                        <div class="poll-option-input-row">
+                            <input type="text" class="poll-option-input" placeholder="Option 1" maxlength="100">
+                        </div>
+                        <div class="poll-option-input-row">
+                            <input type="text" class="poll-option-input" placeholder="Option 2" maxlength="100">
+                        </div>
+                    </div>
+                    <button type="button" id="poll-add-option">+ Add option</button>
+                    <div class="poll-compose-actions">
+                        <button type="button" id="poll-cancel">Cancel</button>
+                        <button type="button" id="poll-create">Create poll</button>
+                    </div>
+                </div>
+
+                <!-- Long-press action menu for a single message -->
+                <div id="message-menu" class="hidden">
+                    <button type="button" id="message-menu-info">ℹ️ Message info</button>
+                    <button type="button" id="message-menu-delete">🗑️ Delete</button>
+                </div>
+                <div id="message-menu-overlay" class="hidden"></div>
+
+                <!-- Message info panel (delivered / read / played breakdown) -->
+                <div id="message-info-panel" class="hidden">
+                    <div class="info-panel-header">
+                        <h4>Message info</h4>
+                        <button type="button" id="info-panel-close">&times;</button>
+                    </div>
+                    <div class="info-panel-body">
+                        <div class="info-section" id="info-read-section">
+                            <h5>Read by</h5>
+                            <ul class="info-member-list" id="info-read-list"></ul>
+                        </div>
+                        <div class="info-section" id="info-played-section">
+                            <h5>Played by</h5>
+                            <ul class="info-member-list" id="info-played-list"></ul>
+                        </div>
+                        <div class="info-section" id="info-delivered-section">
+                            <h5>Delivered to</h5>
+                            <ul class="info-member-list" id="info-delivered-list"></ul>
+                        </div>
+                    </div>
+                </div>
+                <div id="info-panel-overlay" class="hidden"></div>
             </div>
         </div>
     </div>
@@ -171,7 +256,18 @@
         const SEND_PHOTO_URL = "{% url 'send_photo' %}";
         const SEND_DOCUMENT_URL = "{% url 'send_document' %}";
         const SEND_STICKER_URL = "{% url 'send_sticker' %}";
-        const LAST_ID = {% if messages %}{{ messages.last.id }}{% else %}0{% endif %};
+        const CREATE_STICKER_URL = "{% url 'create_sticker' %}";
+        const SEND_POLL_URL = "{% url 'send_poll' %}";
+        // These contain a literal "0" standing in for the message id;
+        // room.js does a string replace before using them.
+        const DELETE_URL_TEMPLATE = "{% url 'delete_message' 0 %}";
+        const MARK_READ_URL_TEMPLATE = "{% url 'mark_read' 0 %}";
+        const MARK_PLAYED_URL_TEMPLATE = "{% url 'mark_played' 0 %}";
+        const MESSAGE_INFO_URL_TEMPLATE = "{% url 'message_info' 0 %}";
+        const VOTE_URL_TEMPLATE = "{% url 'vote_poll' 0 %}";
+        const CURRENT_USERNAME = "{{ user.username }}";
+        const IS_STAFF = {% if user.is_staff %}true{% else %}false{% endif %};
+        const LAST_ID = {{ last_id }};
     </script>
     <script src="{% static 'chat/room.js' %}"></script>
 </body>

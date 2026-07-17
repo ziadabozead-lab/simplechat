@@ -179,6 +179,10 @@ MAX_PHOTO_MESSAGE_BYTES = 10 * 1024 * 1024
 # Documents (PDFs, Office files, zips, etc).
 MAX_DOCUMENT_MESSAGE_BYTES = 20 * 1024 * 1024
 
+# Custom stickers people create from their own images - small on purpose,
+# these are meant to be tiny icon-like images, not full photos.
+MAX_STICKER_IMAGE_BYTES = 2 * 1024 * 1024
+
 LOGIN_URL = 'login'
 LOGIN_REDIRECT_URL = 'room'
 LOGOUT_REDIRECT_URL = 'login'
