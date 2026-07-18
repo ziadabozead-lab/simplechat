@@ -207,16 +207,41 @@ class UserProfile(models.Model):
         return f"{self.user.username} ({self.approval_status})"
 
 
+class Country(models.Model):
+    """
+    Country dial-code reference data for the signup phone number fields.
+    Used to live as a hardcoded list in chat/countries.py; now a real
+    table so it can be managed (added to / corrected / reordered) from
+    the admin panel without a code deploy. Seeded with the same data the
+    old countries.py shipped with - see the data migration that created
+    this table.
+    """
+
+    iso2 = models.CharField("ISO code", max_length=2, unique=True)
+    name = models.CharField(max_length=100)
+    dial_code = models.CharField("Dial code", max_length=4, help_text="Without the leading '+'.")
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name_plural = "countries"
+
+    def __str__(self):
+        return f"{self.name} (+{self.dial_code})"
+
+
 class PhoneNumber(models.Model):
     """A user can register more than one phone number, from any country."""
 
     profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="phone_numbers")
-    country_iso2 = models.CharField(max_length=2)
-    dial_code = models.CharField(max_length=4)
+    country = models.ForeignKey(Country, on_delete=models.PROTECT, related_name="phone_numbers", null=True, blank=True)
     number = models.CharField(max_length=20)
 
     def __str__(self):
-        return f"+{self.dial_code} {self.number}"
+        if self.country:
+            return f"+{self.country.dial_code} {self.number}"
+        return self.number
 
     def formatted(self):
-        return f"+{self.dial_code} {self.number}"
+        if self.country:
+            return f"+{self.country.dial_code} {self.number}"
+        return self.number

@@ -4,7 +4,14 @@ from django.contrib.auth.models import User
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
-from .models import Message, PhoneNumber, UserProfile
+from .models import Country, Message, PhoneNumber, UserProfile
+
+
+@admin.register(Country)
+class CountryAdmin(admin.ModelAdmin):
+    list_display = ("name", "iso2", "dial_code")
+    search_fields = ("name", "iso2", "dial_code")
+    ordering = ("name",)
 
 
 @admin.register(Message)
@@ -65,7 +72,7 @@ class PhoneNumberInline(admin.TabularInline):
     model = PhoneNumber
     extra = 0
     can_delete = False
-    readonly_fields = ("country_iso2", "dial_code", "number")
+    readonly_fields = ("country", "number")
 
     def has_add_permission(self, request, obj=None):
         return False

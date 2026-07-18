@@ -10,9 +10,9 @@ from django.templatetags.static import static
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from .countries import COUNTRY_CHOICES, DIAL_CODE_BY_ISO2
 from .forms import SignupForm
 from .models import (
+    Country,
     CustomSticker,
     Message,
     MessageReceipt,
@@ -90,23 +90,33 @@ def signup(request):
 
             profile = UserProfile.objects.create(user=user, approval_status=UserProfile.PENDING)
 
-            countries = request.POST.getlist("phone_country")
+            # One query for every country, keyed by iso2, so the loop
+            # below doesn't hit the DB once per submitted phone row.
+            country_by_iso2 = {c.iso2: c for c in Country.objects.all()}
+
+            submitted_countries = request.POST.getlist("phone_country")
             numbers = request.POST.getlist("phone_number")
-            for iso2, number in zip(countries, numbers):
+            for iso2, number in zip(submitted_countries, numbers):
                 number = number.strip()
                 if not number:
                     continue
+                country = country_by_iso2.get(iso2)
+                if not country:
+                    # Unknown/stale iso2 (e.g. the dropdown was tampered
+                    # with) - skip rather than fail the whole signup.
+                    continue
                 PhoneNumber.objects.create(
                     profile=profile,
-                    country_iso2=iso2,
-                    dial_code=DIAL_CODE_BY_ISO2.get(iso2, ""),
+                    country=country,
                     number=number,
                 )
 
             return redirect("signup_pending")
     else:
         form = SignupForm()
-    return render(request, "chat/signup.html", {"form": form, "countries": COUNTRY_CHOICES})
+
+    countries = [(c.iso2, f"{c.name} (+{c.dial_code})") for c in Country.objects.all()]
+    return render(request, "chat/signup.html", {"form": form, "countries": countries})
 
 
 def signup_pending(request):
