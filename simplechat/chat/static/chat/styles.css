@@ -1004,30 +1004,42 @@ video.video-note {
     display: flex;
     gap: 8px;
     margin-bottom: 8px;
+    max-width: 80%;
 }
 
 .phone-country {
-    flex: 0 0 46%;
-    width: auto;
+    flex: 0 0 108px;
+    width: 10px;
     margin: 0;
+    padding: 8px 5px 8px 8px;
+    min-height: 38px;
+    font-size: 12.5px;
+    background-position: right 8px center;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .phone-number {
     flex: 1;
-    width: auto;
+    width: 10000000px;
     margin: 0;
+    padding: 8px 50px 5px 5px;
+    min-height: 38px;
+    font-size: 13.5px;
 }
 
 .phone-remove {
-    flex: 0 0 40px;
-    width: 40px;
+    flex: 0 0 34px;
+    width: 34px;
+    min-height: 38px;
     padding: 0;
     margin: 0;
     border-radius: 10px;
     background: var(--bg-chat);
     color: var(--text-secondary);
     border: 1px solid var(--input-border);
-    font-size: 18px;
+    font-size: 16px;
 }
 
 .phone-remove:hover { background: var(--input-border); }

@@ -38,34 +38,21 @@ class BanFilter(admin.SimpleListFilter):
 
 
 class CustomUserAdmin(UserAdmin):
-    # NOTE on passwords:
-    # Django never stores a user's real password anywhere, including here.
-    # `User.password` only holds a one-way salted hash (e.g. "pbkdf2_sha256$...")
-    # so there is no "original password" for the admin panel to reveal, for
-    # any user. This isn't a Django limitation to work around - it's what
-    # keeps every account safe if the database is ever leaked, and it's the
-    # same reason "forgot password" flows everywhere make you *reset* your
-    # password rather than emailing it back to you.
-    #
-    # What the admin panel CAN safely do (and already does via UserAdmin):
-    # set a new password for any user. The "Change password" link below
-    # takes you straight to that built-in page.
+
     list_display = ("username", "email", "is_active", "is_staff", "date_joined", "password_actions")
     list_filter = (BanFilter, "is_staff")
-    actions = ["ban_users", "unban_users"]
+
+    # is_active is controlled exclusively through UserProfile.approval_status
+    # (see UserProfileAdmin._apply_decision below). Editing it here directly
+    # would desync the two: is_active would flip but approval_status would
+    # stay "pending" forever. Read-only display only; use the UserProfile
+    # admin's Approve/Reject actions to change it.
+    readonly_fields = UserAdmin.readonly_fields + ("is_active",)
 
     @admin.display(description="Password")
     def password_actions(self, obj):
         url = reverse("admin:auth_user_password_change", args=[obj.pk])
         return format_html('<a href="{}">Set new password</a>', url)
-
-    @admin.action(description="Ban selected users")
-    def ban_users(self, request, queryset):
-        queryset.update(is_active=False)
-
-    @admin.action(description="Unban selected users")
-    def unban_users(self, request, queryset):
-        queryset.update(is_active=True)
 
 
 class PhoneNumberInline(admin.TabularInline):
@@ -80,20 +67,6 @@ class PhoneNumberInline(admin.TabularInline):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    """
-    Every new signup lands here as 'Pending' until an admin approves or
-    rejects it. Approving flips the linked User to is_active=True, which
-    is what actually lets them log in (see PendingAwareAuthenticationForm).
-
-    This works two ways that both need to apply the same side effects:
-    1. Selecting rows + "Approve selected signups" / "Reject selected
-       signups" from the bulk action dropdown (approve_signups/
-       reject_signups below).
-    2. Opening a single profile, changing the "Approval status" dropdown
-       field directly, and clicking Save - this does NOT go through the
-       actions above, so save_model() below re-applies the same is_active
-       + decided_at sync whenever approval_status actually changed.
-    """
 
     list_display = ("user", "approval_status", "requested_at", "decided_at", "phone_summary")
     list_filter = ("approval_status",)

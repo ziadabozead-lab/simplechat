@@ -364,6 +364,15 @@
         let timerHandle = null;
         let cancelled = false;
 
+        // Without a cap, a recording left running (e.g. the person locks
+        // their phone or switches tabs mid-recording) just keeps capturing
+        // audio in the background - MediaRecorder doesn't stop on its own.
+        // Opus compresses near-silence to almost nothing, so the resulting
+        // file can sail under MAX_VOICE_MESSAGE_BYTES while still being
+        // 30+ minutes long. Auto-stopping (and sending what was captured
+        // so far) puts a hard ceiling on that.
+        const MAX_RECORDING_MS = 3 * 60 * 1000;
+
         function formatTime(ms) {
             const totalSec = Math.floor(ms / 1000);
             const m = Math.floor(totalSec / 60);
@@ -372,7 +381,11 @@
         }
 
         function updateTimer() {
-            timeLabel.textContent = formatTime(Date.now() - startTime);
+            const elapsed = Date.now() - startTime;
+            timeLabel.textContent = formatTime(elapsed);
+            if (elapsed >= MAX_RECORDING_MS) {
+                stopRecording(false);
+            }
         }
 
         function showBanner() {
@@ -473,6 +486,19 @@
         if (stopBtn) {
             stopBtn.addEventListener('click', function () { stopRecording(false); });
         }
+
+        // Backgrounding the tab (switching apps, locking the phone) mid
+        // recording is almost never intentional, and letting it keep
+        // capturing audio the person isn't aware of is both a privacy
+        // problem and exactly what produced the 33-minute clip this was
+        // added to fix. Discard rather than send, since a recording made
+        // while the person wasn't looking at the screen isn't one they
+        // meant to send.
+        document.addEventListener('visibilitychange', function () {
+            if (document.hidden && mediaRecorder && mediaRecorder.state === 'recording') {
+                stopRecording(true);
+            }
+        });
     })();
 
     /* ---------------------------------------------------------------- */
@@ -707,7 +733,46 @@
     /* ---------------------------------------------------------------- */
     /* Read receipts: mark a message read once it actually scrolls into */
     /* view (not just because it was fetched/delivered).                */
+    /*                                                                  */
+    /* Previously this fired one POST per message the instant it        */
+    /* intersected - fine for messages arriving one at a time while     */
+    /* chatting, but on page load the observer can see a whole screen's */
+    /* worth of messages become visible in the same tick, which fired   */
+    /* a burst of concurrent requests and produced SQLite "database is  */
+    /* locked" errors server-side. Instead, ids are queued and flushed  */
+    /* together in one request after a short quiet period.              */
     /* ---------------------------------------------------------------- */
+
+    const pendingReadIds = new Set();
+    let readFlushTimer = null;
+
+    function flushReadReceipts() {
+        readFlushTimer = null;
+        if (pendingReadIds.size === 0 || typeof MARK_READ_BULK_URL === 'undefined') return;
+        const ids = Array.from(pendingReadIds);
+        pendingReadIds.clear();
+        const params = new URLSearchParams();
+        ids.forEach(function (id) { params.append('message_ids', id); });
+        fetch(MARK_READ_BULK_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'X-CSRFToken': CSRF_TOKEN,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: params.toString()
+        }).catch(function () { /* non-critical, ignore */ });
+    }
+
+    function queueReadReceipt(id) {
+        if (!id) return;
+        pendingReadIds.add(id);
+        // Debounce: each new id arriving resets the timer, so a burst of
+        // messages becoming visible together (page load, fast scroll)
+        // collapses into a single request once things settle down.
+        if (readFlushTimer) clearTimeout(readFlushTimer);
+        readFlushTimer = setTimeout(flushReadReceipts, 300);
+    }
 
     const readObserver = ('IntersectionObserver' in window)
         ? new IntersectionObserver(function (entries) {
@@ -715,12 +780,7 @@
                 if (!entry.isIntersecting) return;
                 const el = entry.target;
                 readObserver.unobserve(el);
-                const id = el.dataset.id;
-                if (!id || typeof MARK_READ_URL_TEMPLATE === 'undefined') return;
-                fetch(MARK_READ_URL_TEMPLATE.replace('0', id), {
-                    method: 'POST',
-                    headers: { 'X-CSRFToken': CSRF_TOKEN, 'X-Requested-With': 'XMLHttpRequest' }
-                }).catch(function () { /* non-critical, ignore */ });
+                queueReadReceipt(el.dataset.id);
             });
         }, { root: chatBox, threshold: 0.1 })
         : null;
@@ -1062,4 +1122,24 @@
         observeForReadReceipt(el, false);
     });
     scrollToBottom(false);
+
+    // Flush any still-pending (debounced) read receipts before the page
+    // goes away, using sendBeacon since a plain fetch() can get cancelled
+    // mid-flight during unload.
+    document.addEventListener('visibilitychange', function () {
+        if (document.visibilityState !== 'hidden') return;
+        if (pendingReadIds.size === 0 || typeof MARK_READ_BULK_URL === 'undefined') return;
+        if (readFlushTimer) { clearTimeout(readFlushTimer); readFlushTimer = null; }
+        const params = new URLSearchParams();
+        pendingReadIds.forEach(function (id) { params.append('message_ids', id); });
+        pendingReadIds.clear();
+        if (navigator.sendBeacon) {
+            // sendBeacon can't set custom headers, so the CSRF token has
+            // to travel as a normal POST field here instead of the
+            // X-CSRFToken header the fetch() path above uses.
+            params.append('csrfmiddlewaretoken', CSRF_TOKEN);
+            const blob = new Blob([params.toString()], { type: 'application/x-www-form-urlencoded' });
+            navigator.sendBeacon(MARK_READ_BULK_URL, blob);
+        }
+    });
 })();

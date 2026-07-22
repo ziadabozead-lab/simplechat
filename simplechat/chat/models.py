@@ -2,9 +2,6 @@ from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
-# A user counts as "online" if their last_seen is within this window.
-# Kept close to the 3s poll interval in room.js plus some slack so a
-# person doesn't flicker offline between polls.
 ONLINE_WINDOW_SECONDS = 12
 
 
@@ -52,21 +49,10 @@ class Message(models.Model):
     video = models.FileField(upload_to=video_message_path, blank=True, null=True)
     photo = models.FileField(upload_to=photo_message_path, blank=True, null=True)
     document = models.FileField(upload_to=document_message_path, blank=True, null=True)
-    # The stored document filename is a random UUID (see views.send_document)
-    # so it can't collide; this keeps the name the person actually gave the
-    # file, so the chat can still show/download it as "report.pdf" etc.
     document_name = models.CharField(max_length=255, blank=True)
-    # For stickers we either reference a file in static/chat/stickers/
-    # (the fixed, pre-approved built-in set - e.g. "thumbs_up.svg") or,
-    # if custom_sticker is set below, one a user created themselves.
     sticker = models.CharField(max_length=64, blank=True)
-    custom_sticker = models.ForeignKey(
-        "CustomSticker", on_delete=models.SET_NULL, null=True, blank=True, related_name="messages"
-    )
+    custom_sticker = models.ForeignKey("CustomSticker", on_delete=models.SET_NULL, null=True, blank=True, related_name="messages")
     message_type = models.CharField(max_length=10, choices=MESSAGE_TYPES, default=TEXT)
-    # WhatsApp-style soft delete: the row (and its receipts/votes) stays,
-    # but the actual content is wiped and the chat shows a tombstone
-    # instead. See views.delete_message.
     is_deleted = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -89,19 +75,6 @@ class Message(models.Model):
 
 
 class MessageReceipt(models.Model):
-    """
-    Per-(message, user) delivery/read/played tracking, powering the
-    WhatsApp-style "info" panel on long-press. There's one group room
-    here rather than 1-to-1 conversations, so "delivered"/"read" is
-    tracked against every other active member, not a single recipient.
-
-    - delivered_at: set the first time this message shows up in that
-      user's /messages/ poll response (see views.get_messages).
-    - read_at: set when the message actually scrolls into view in their
-      chat box (IntersectionObserver in room.js calls /mark-read/).
-    - played_at: audio messages only, set when they actually press play
-      (room.js calls /mark-played/ on the <audio> 'play' event).
-    """
 
     message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="receipts")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="message_receipts")
@@ -129,12 +102,6 @@ class PollOption(models.Model):
 
 
 class PollVote(models.Model):
-    """
-    One vote per user per poll (single-choice, like a basic WhatsApp
-    poll). `message` is denormalized alongside `option` purely so
-    unique_together can enforce "one vote per user per poll" directly,
-    since Django can't express uniqueness across a FK's own FK.
-    """
 
     message = models.ForeignKey(Message, on_delete=models.CASCADE, related_name="poll_votes")
     option = models.ForeignKey(PollOption, on_delete=models.CASCADE, related_name="votes")
@@ -146,12 +113,6 @@ class PollVote(models.Model):
 
 
 class CustomSticker(models.Model):
-    """
-    A sticker someone made themselves by uploading an image (see
-    views.create_sticker). Shared with the whole room, same as the
-    built-in set - once created, anyone can pick it from the sticker
-    picker, not just its creator.
-    """
 
     created_by = models.CharField(max_length=150)
     image = models.FileField(upload_to=custom_sticker_path)
@@ -162,14 +123,6 @@ class CustomSticker(models.Model):
 
 
 class UserPresence(models.Model):
-    """
-    One row per user, updated on every authenticated request (see
-    chat/middleware.py). Whether someone shows as "online" is derived
-    from how recently this timestamp was touched - there's no separate
-    login/logout tracking, so closing the tab quietly just lets the
-    timestamp go stale and they fall back to offline within
-    ONLINE_WINDOW_SECONDS.
-    """
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="presence")
     last_seen = models.DateTimeField(default=timezone.now)
@@ -182,12 +135,6 @@ class UserPresence(models.Model):
 
 
 class UserProfile(models.Model):
-    """
-    Created for every new signup. Holds the admin approval status, since
-    User.is_active is already used for banning (see BanFilter in admin.py)
-    and we don't want a rejected/pending signup to look identical to a
-    banned account in the admin UI.
-    """
 
     PENDING = "pending"
     APPROVED = "approved"
@@ -208,14 +155,6 @@ class UserProfile(models.Model):
 
 
 class Country(models.Model):
-    """
-    Country dial-code reference data for the signup phone number fields.
-    Used to live as a hardcoded list in chat/countries.py; now a real
-    table so it can be managed (added to / corrected / reordered) from
-    the admin panel without a code deploy. Seeded with the same data the
-    old countries.py shipped with - see the data migration that created
-    this table.
-    """
 
     iso2 = models.CharField("ISO code", max_length=2, unique=True)
     name = models.CharField(max_length=100)
@@ -230,7 +169,6 @@ class Country(models.Model):
 
 
 class PhoneNumber(models.Model):
-    """A user can register more than one phone number, from any country."""
 
     profile = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="phone_numbers")
     country = models.ForeignKey(Country, on_delete=models.PROTECT, related_name="phone_numbers", null=True, blank=True)

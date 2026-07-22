@@ -82,7 +82,11 @@
                                     <span class="doc-name">{{ m.document_name }}</span>
                                 </a>
                             {% elif m.message_type == 'sticker' %}
-                                <img class="sticker-img" src="{% static 'chat/stickers/'|add:m.sticker %}" alt="sticker">
+                                {% if m.custom_sticker %}
+                                    <img class="sticker-img" src="{{ m.custom_sticker.image.url }}" alt="sticker">
+                                {% else %}
+                                    <img class="sticker-img" src="{% static 'chat/stickers/'|add:m.sticker %}" alt="sticker">
+                                {% endif %}
                             {% elif m.message_type == 'poll' %}
                                 <div class="poll-msg" data-poll-id="{{ m.id }}" data-voted-option-id="{{ m.my_vote_option_id|default:'' }}">
                                     <div class="poll-question">📊 {{ m.text }}</div>
@@ -261,6 +265,7 @@
         // These contain a literal "0" standing in for the message id;
         // room.js does a string replace before using them.
         const DELETE_URL_TEMPLATE = "{% url 'delete_message' 0 %}";
+        const MARK_READ_BULK_URL = "{% url 'mark_read_bulk' %}";
         const MARK_READ_URL_TEMPLATE = "{% url 'mark_read' 0 %}";
         const MARK_PLAYED_URL_TEMPLATE = "{% url 'mark_played' 0 %}";
         const MESSAGE_INFO_URL_TEMPLATE = "{% url 'message_info' 0 %}";

@@ -85,7 +85,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'chat.middleware.UpdatePresenceMiddleware',
+    'chat.middlewares.middleware.UpdatePresenceMiddleware',
 ]
 
 ROOT_URLCONF = 'simplechat.urls'
@@ -115,16 +115,12 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
-        # SQLite's default busy-timeout is short; under a burst of
-        # concurrent requests (several voice/video messages loading at
-        # once) that was enough to trip "database is locked" errors.
-        # 20s gives a brief write time to finish instead of failing.
         'OPTIONS': {
             'timeout': 20,
+            'init_command': "PRAGMA journal_mode=WAL;",
         },
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -193,4 +189,5 @@ LOGOUT_REDIRECT_URL = 'login'
 # chat/backends.py and PendingAwareAuthenticationForm in chat/forms.py).
 AUTHENTICATION_BACKENDS = [
     'chat.backends.AllowInactiveAuthBackend',
+    'django.contrib.auth.backends.ModelBackend',
 ]

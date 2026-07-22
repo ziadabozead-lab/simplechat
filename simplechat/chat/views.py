@@ -1,15 +1,14 @@
 from datetime import timedelta
 from uuid import uuid4
-
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import User
+from django.db import OperationalError, transaction
 from django.http import JsonResponse
 from django.shortcuts import render, redirect
 from django.templatetags.static import static
 from django.utils import timezone
 from django.views.decorators.http import require_POST
-
 from .forms import SignupForm
 from .models import (
     Country,
@@ -477,10 +476,52 @@ def mark_read(request, message_id):
     if message.sender == request.user.username:
         return JsonResponse({"ok": True})  # no self-receipts
 
-    MessageReceipt.objects.update_or_create(
-        message=message, user=request.user,
-        defaults={"read_at": timezone.now(), "delivered_at": timezone.now()},
-    )
+    try:
+        MessageReceipt.objects.update_or_create(
+            message=message, user=request.user,
+            defaults={"read_at": timezone.now(), "delivered_at": timezone.now()},
+        )
+    except OperationalError:
+        # SQLite lock timeout - see mark_read_bulk's docstring for the
+        # bigger picture; this single-message endpoint is kept around
+        # for callers that still hit it one at a time, so it gets the
+        # same "don't 500 the request over it" treatment as
+        # UpdatePresenceMiddleware already does.
+        return JsonResponse({"ok": False})
+    return JsonResponse({"ok": True})
+
+
+@login_required
+@require_POST
+def mark_read_bulk(request):
+    """
+    Batched version of mark_read. room.js's IntersectionObserver can see
+    a whole page's worth of messages become visible at once (e.g. every
+    message already on screen the moment the room page loads), and used
+    to fire one POST per message id - a burst of concurrent writers all
+    landing on SQLite at the same instant, which is what was producing
+    "database is locked" errors even with the 20s busy-timeout in
+    settings.py. Marking every id from that burst in a single request/
+    transaction instead turns N concurrent writes into 1.
+    """
+    ids = [i for i in request.POST.getlist("message_ids") if i.isdigit()]
+    if not ids:
+        return JsonResponse({"ok": True})
+
+    messages = Message.objects.filter(id__in=ids).exclude(sender=request.user.username)
+    now = timezone.now()
+    try:
+        with transaction.atomic():
+            for message in messages:
+                MessageReceipt.objects.update_or_create(
+                    message=message, user=request.user,
+                    defaults={"read_at": now, "delivered_at": now},
+                )
+    except OperationalError:
+        # Transient lock timeout - the next batch (room.js retries on
+        # its own 300ms debounce) or a plain page reload will catch
+        # these up; not worth a 500 over a read receipt.
+        return JsonResponse({"ok": False})
     return JsonResponse({"ok": True})
 
 
@@ -496,10 +537,13 @@ def mark_played(request, message_id):
     if message.sender == request.user.username:
         return JsonResponse({"ok": True})
 
-    MessageReceipt.objects.update_or_create(
-        message=message, user=request.user,
-        defaults={"played_at": timezone.now(), "read_at": timezone.now(), "delivered_at": timezone.now()},
-    )
+    try:
+        MessageReceipt.objects.update_or_create(
+            message=message, user=request.user,
+            defaults={"played_at": timezone.now(), "read_at": timezone.now(), "delivered_at": timezone.now()},
+        )
+    except OperationalError:
+        return JsonResponse({"ok": False})
     return JsonResponse({"ok": True})
 
 
