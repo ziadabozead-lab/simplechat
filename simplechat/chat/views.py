@@ -10,6 +10,7 @@ from django.templatetags.static import static
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .forms import SignupForm
+from .utils import get_client_ip
 from .models import (
     Country,
     CustomSticker,
@@ -22,6 +23,7 @@ from .models import (
     UserProfile,
     ONLINE_WINDOW_SECONDS,
 )
+
 
 # Only these audio container types are accepted from the recorder.
 # (MediaRecorder in browsers produces webm/ogg containers with an
@@ -87,7 +89,11 @@ def signup(request):
             user.is_active = False
             user.save()
 
-            profile = UserProfile.objects.create(user=user, approval_status=UserProfile.PENDING)
+            profile = UserProfile.objects.create(
+                user=user,
+                approval_status=UserProfile.PENDING,
+                signup_ip=get_client_ip(request),
+            )
 
             # One query for every country, keyed by iso2, so the loop
             # below doesn't hit the DB once per submitted phone row.

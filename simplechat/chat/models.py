@@ -149,6 +149,7 @@ class UserProfile(models.Model):
     approval_status = models.CharField(max_length=10, choices=APPROVAL_STATUSES, default=PENDING)
     requested_at = models.DateTimeField(auto_now_add=True)
     decided_at = models.DateTimeField(null=True, blank=True)
+    signup_ip = models.GenericIPAddressField(null=True, blank=True)
 
     def __str__(self):
         return f"{self.user.username} ({self.approval_status})"
@@ -183,3 +184,16 @@ class PhoneNumber(models.Model):
         if self.country:
             return f"+{self.country.dial_code} {self.number}"
         return self.number
+
+
+class BlockedIP(models.Model):
+
+    ip_address = models.GenericIPAddressField(unique=True)
+    reason = models.CharField(max_length=255, blank=True)
+    blocked_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-blocked_at"]
+
+    def __str__(self):
+        return self.ip_address
