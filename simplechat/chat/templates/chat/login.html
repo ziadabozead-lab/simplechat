@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Login</title>
-    <link rel="icon" type="image/x-icon" href="{% static 'favicon.ico' %}">
+    <link rel="icon" type="image/svg+xml" href="{% static 'chat/favicon.svg' %}">
     <link rel="stylesheet" href="{% static 'chat/styles.css' %}">
     <script>
         (function () {
@@ -18,6 +18,18 @@
 <body>
     <div class="container auth">
         <div class="auth-card">
+            <div class="brand">
+                    <defs>
+                        <linearGradient id="sparkleGradientLogin" x1="4" y1="4" x2="36" y2="36" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="var(--accent)"/>
+                            <stop offset="100%" stop-color="var(--gold-bright)"/>
+                        </linearGradient>
+                    </defs>
+                    <path d="M20,3 C21.6,13.2 26.8,18.4 37,20 C26.8,21.6 21.6,26.8 20,37 C18.4,26.8 13.2,21.6 3,20 C13.2,18.4 18.4,13.2 20,3 Z" fill="url(#sparkleGradientLogin)"/>
+                    <circle cx="32" cy="9" r="2.6" fill="var(--gold-bright)"/>
+                </svg>
+                <span class="brand-word">Simple<em>Chat</em></span>
+            </div>
             <h1>Welcome back</h1>
             <form method="post">
                 {% csrf_token %}
