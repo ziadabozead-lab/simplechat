@@ -252,7 +252,15 @@ def get_messages(request):
     messages = list(Message.objects.filter(id__gt=after_id).order_by("created_at"))
     _mark_delivered(messages, request.user)
     data = [_serialize_message(m, request) for m in messages]
-    return JsonResponse({"messages": data})
+
+    # Messages the client already has (id <= after_id) that have since
+    # been (soft-)deleted, so it can tombstone them live instead of
+    # waiting for a reload. Just ids - cheap, and idempotent client-side.
+    deleted_ids = list(
+        Message.objects.filter(is_deleted=True, id__lte=after_id).values_list("id", flat=True)
+    )
+
+    return JsonResponse({"messages": data, "deleted_ids": deleted_ids})
 
 
 def _mark_delivered(messages, user):

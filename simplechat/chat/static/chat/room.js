@@ -285,6 +285,22 @@
     /* Polling for new messages                                          */
     /* ---------------------------------------------------------------- */
 
+    function tombstoneMessage(id) {
+        const el = chatBox.querySelector('.msg[data-id="' + id + '"]');
+        if (!el || el.classList.contains('deleted')) return; // already a tombstone, nothing to do
+        el.classList.add('deleted');
+        el.dataset.canDelete = '0';
+        const contentEls = el.querySelectorAll(
+            '.text, .voice-note, .voice-error, .video-note, .photo-msg, .doc-msg, .sticker-img, .poll-msg'
+        );
+        contentEls.forEach(function (n) { n.remove(); });
+        const timeEl = el.querySelector('.time');
+        const tomb = document.createElement('div');
+        tomb.className = 'text deleted-text';
+        tomb.textContent = '🚫 This message was deleted';
+        el.insertBefore(tomb, timeEl);
+    }
+
     function pollForMessages() {
         if (polling) return; // avoid overlapping requests
         polling = true;
@@ -293,12 +309,15 @@
         })
             .then(function (res) { return res.json(); })
             .then(function (data) {
-                if (!data || !data.messages || !data.messages.length) return;
+                if (!data) return;
                 const shouldScroll = chatBox.scrollTop + chatBox.clientHeight >= chatBox.scrollHeight - 40;
-                data.messages.forEach(function (m) {
+                (data.messages || []).forEach(function (m) {
                     if (m.id <= lastId) return;
                     renderMessage(m);
                     lastId = Math.max(lastId, m.id);
+                });
+                (data.deleted_ids || []).forEach(function (id) {
+                    tombstoneMessage(id);
                 });
                 if (shouldScroll) scrollToBottom(true);
             })
@@ -900,19 +919,7 @@
                             if (data && data.error) alert(data.error);
                             return;
                         }
-                        const el = chatBox.querySelector('.msg[data-id="' + id + '"]');
-                        if (!el) return;
-                        el.classList.add('deleted');
-                        el.dataset.canDelete = '0';
-                        const contentEls = el.querySelectorAll(
-                            '.text, .voice-note, .voice-error, .video-note, .photo-msg, .doc-msg, .sticker-img, .poll-msg'
-                        );
-                        contentEls.forEach(function (n) { n.remove(); });
-                        const timeEl = el.querySelector('.time');
-                        const tomb = document.createElement('div');
-                        tomb.className = 'text deleted-text';
-                        tomb.textContent = '🚫 This message was deleted';
-                        el.insertBefore(tomb, timeEl);
+                        tombstoneMessage(id);
                     })
                     .catch(function (err) { console.error('Failed to delete message:', err); });
             });
