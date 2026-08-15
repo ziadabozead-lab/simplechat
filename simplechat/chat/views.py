@@ -188,11 +188,19 @@ def get_members(request):
 
 @login_required
 def call_status(request):
-    # Polled every few seconds so people who don't have the call panel
+    # Polled every few seconds so people who don't have the call page
     # open yet still see a "N people on a call" banner and can join.
     # Backed by chat.consumers.participants, the in-memory registry the
     # CallConsumer websocket keeps of who's currently connected.
     return JsonResponse({"participants": sorted(call_participants.keys())})
+
+
+@login_required
+def call_room(request):
+    # Dedicated full-page call view (separate from the chat room), styled
+    # like Meet: dark background, video grid, pill control bar. All the
+    # actual WebRTC/signaling logic lives in call_room.js.
+    return render(request, "chat/call.html", {})
 
 
 def _serialize_message(m, request):

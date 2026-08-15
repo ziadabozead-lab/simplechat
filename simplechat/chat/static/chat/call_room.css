@@ -1,0 +1,186 @@
+:root {
+    --meet-bg: #202124;
+    --meet-surface: #292a2d;
+    --meet-tile: #3c4043;
+    --meet-text: #e8eaed;
+    --meet-text-dim: #9aa0a6;
+    --meet-danger: #ea4335;
+    --meet-danger-hover: #d33426;
+    --meet-control: #3c4043;
+    --meet-control-hover: #4a4d51;
+    --meet-control-active-off: #ea4335;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: var(--meet-bg);
+    color: var(--meet-text);
+    font-family: 'Google Sans', Roboto, Arial, sans-serif;
+    overflow: hidden;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+}
+
+#meet-topbar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    font-size: 14px;
+    color: var(--meet-text-dim);
+}
+
+#meet-title {
+    color: var(--meet-text);
+    font-weight: 500;
+    font-size: 16px;
+}
+
+#meet-participant-count::before {
+    content: "👤 ";
+}
+
+#meet-stage {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 8px 16px;
+    min-height: 0;
+}
+
+#meet-video-grid {
+    width: 100%;
+    height: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    grid-auto-rows: 1fr;
+    gap: 10px;
+    align-content: center;
+    justify-items: stretch;
+}
+
+/* Single participant (just you, or a 1:1 call): show fewer, bigger tiles */
+#meet-video-grid:has(> :only-child) {
+    grid-template-columns: minmax(0, 720px);
+    justify-content: center;
+}
+
+.meet-tile {
+    position: relative;
+    background: var(--meet-tile);
+    border-radius: 12px;
+    overflow: hidden;
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.meet-tile video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.meet-tile.is-local video {
+    transform: scaleX(-1); /* mirror the self-view, like every video call app */
+}
+
+.meet-tile.audio-only video { display: none; }
+
+.meet-tile .meet-avatar {
+    display: none;
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: #5f6368;
+    color: #fff;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.meet-tile.audio-only .meet-avatar { display: flex; }
+
+.meet-tile .meet-tile-label {
+    position: absolute;
+    left: 10px;
+    bottom: 10px;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 13px;
+    padding: 4px 10px;
+    border-radius: 6px;
+}
+
+#meet-waiting,
+#meet-error {
+    position: absolute;
+    color: var(--meet-text-dim);
+    font-size: 15px;
+}
+
+#meet-waiting.hidden,
+#meet-error.hidden { display: none; }
+
+#meet-error {
+    color: #f28b82;
+    text-align: center;
+    max-width: 320px;
+}
+
+#meet-controls {
+    flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+    padding: 18px 20px 26px;
+}
+
+#meet-controls button {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    background: var(--meet-control);
+    color: var(--meet-text);
+    font-size: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+}
+
+#meet-controls button:hover { background: var(--meet-control-hover); }
+
+#meet-controls button.active-off { background: var(--meet-control-active-off); }
+
+#meet-leave {
+    background: var(--meet-danger) !important;
+    width: 68px;
+    border-radius: 26px;
+}
+
+#meet-leave:hover { background: var(--meet-danger-hover) !important; }
+
+@media (max-width: 600px) {
+    #meet-topbar { padding: 10px 14px; font-size: 12px; }
+    #meet-title { font-size: 14px; }
+    #meet-video-grid { grid-template-columns: 1fr; }
+    #meet-video-grid:has(> :only-child) { grid-template-columns: 1fr; }
+    .meet-tile { min-height: 45vh; }
+    #meet-controls button { width: 48px; height: 48px; font-size: 18px; }
+    #meet-leave { width: 60px; }
+}

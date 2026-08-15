@@ -1,0 +1,44 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Call - Group Chat</title>
+    <link rel="icon" type="image/x-icon" href="{% static 'favicon/favicon.ico' %}">
+    <link rel="stylesheet" href="{% static 'chat/call_room.css' %}">
+</head>
+<body>
+    <div id="meet-topbar">
+        <span id="meet-title">Group Chat</span>
+        <span id="meet-timer">00:00</span>
+        <span id="meet-participant-count"></span>
+    </div>
+
+    <div id="meet-stage">
+        <div id="meet-video-grid"></div>
+        <div id="meet-waiting" class="hidden">Waiting for others to join…</div>
+        <div id="meet-error" class="hidden"></div>
+    </div>
+
+    <div id="meet-controls">
+        <button type="button" id="meet-toggle-mic" title="Mute / unmute">
+            <span class="meet-icon">🎤</span>
+        </button>
+        <button type="button" id="meet-toggle-cam" title="Turn camera on/off">
+            <span class="meet-icon">🎥</span>
+        </button>
+        <button type="button" id="meet-leave" title="Leave call">
+            <span class="meet-icon">📞</span>
+        </button>
+    </div>
+
+    <script>
+        const CURRENT_USERNAME = "{{ user.username }}";
+        const ROOM_URL = "{% url 'room' %}";
+        const CALL_WS_URL = (window.location.protocol === 'https:' ? 'wss://' : 'ws://')
+            + window.location.host + '/ws/call/';
+    </script>
+    <script src="{% static 'chat/call_room.js' %}"></script>
+</body>
+</html>

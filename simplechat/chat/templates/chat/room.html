@@ -277,21 +277,6 @@
         <button type="button" id="rec-stop">Send</button>
     </div>
 
-    <!-- Live voice/video call overlay -->
-    <div id="call-overlay" class="hidden">
-        <div id="call-panel">
-            <div id="call-header">
-                <span id="call-status-text">Calling…</span>
-            </div>
-            <div id="call-video-grid"></div>
-            <div id="call-controls">
-                <button type="button" id="call-toggle-mic" title="Mute">🎤</button>
-                <button type="button" id="call-toggle-cam" title="Camera on/off">🎥</button>
-                <button type="button" id="call-hangup" title="Hang up">📞</button>
-            </div>
-        </div>
-    </div>
-
     <script>
         // Values Django needs to hand to the external JS file.
         const LOGIN_URL = "{% url 'login' %}";
@@ -317,10 +302,10 @@
         const IS_STAFF = {% if user.is_staff %}true{% else %}false{% endif %};
         const LAST_ID = {{ last_id }};
 
-        // Live call config
+        // Live call config - buttons/banner on this page just redirect
+        // to the dedicated call page; call_room.js does the actual work.
         const CALL_STATUS_URL = "{% url 'call_status' %}";
-        const CALL_WS_URL = (window.location.protocol === 'https:' ? 'wss://' : 'ws://')
-            + window.location.host + '/ws/call/';
+        const CALL_ROOM_URL = "{% url 'call_room' %}";
     </script>
     <script src="{% static 'chat/room.js' %}"></script>
     <script src="{% static 'chat/call.js' %}"></script>
