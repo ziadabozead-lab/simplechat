@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 
 from pathlib import Path
 import mimetypes
+import os
 
 # Python's mimetypes module guesses ".webm" as "video/webm" on most systems,
 # even though MediaRecorder produces audio-only webm blobs. Browsers refuse
@@ -32,6 +33,23 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'django-insecure-(sgqzsry#sd*(w6--t_%x6qflfoz#xzov16tobmqjn^2gu_5=l'
+
+# --- Password storage ---
+# New passwords (signup, password change) are ENCRYPTED, not hashed - see
+# chat/hashers.py for why that's a real security trade-off before you rely
+# on it. Whoever holds this key can decrypt every stored password, so:
+#   1. Set it via an env var in production (never commit a real key to git).
+#   2. If this key is ever lost, every encrypted password becomes
+#      unverifiable (there's no "forgot the key" recovery - that's the
+#      whole point of a key).
+#   Generate a key with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+#   key == yokKWVuPie7F62RlSummpnu20Rwr9_XgqDFEDUnrZ6Q=
+PASSWORD_HASHERS = [
+    "chat.hashers.EncryptedPasswordHasher",       # new passwords: reversible encryption
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",  # keeps existing accounts (already
+                                                            # hashed before this change) able to log in
+]
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
