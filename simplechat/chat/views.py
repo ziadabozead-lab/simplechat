@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 from .forms import SignupForm
 from .utils import get_client_ip
+from .consumers import participants as call_participants
 from .models import (
     Country,
     CustomSticker,
@@ -183,6 +184,15 @@ def get_members(request):
     _attach_online_status(members)
     data = [{"username": m.username, "is_online": m.is_online} for m in members]
     return JsonResponse({"members": data})
+
+
+@login_required
+def call_status(request):
+    # Polled every few seconds so people who don't have the call panel
+    # open yet still see a "N people on a call" banner and can join.
+    # Backed by chat.consumers.participants, the in-memory registry the
+    # CallConsumer websocket keeps of who's currently connected.
+    return JsonResponse({"participants": sorted(call_participants.keys())})
 
 
 def _serialize_message(m, request):

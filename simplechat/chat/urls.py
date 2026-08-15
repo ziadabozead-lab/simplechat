@@ -32,4 +32,5 @@ urlpatterns = [
     path("messages/<int:message_id>/info/", views.message_info, name="message_info"),
     path("send-poll/", views.send_poll, name="send_poll"),
     path("messages/<int:message_id>/vote/", views.vote_poll, name="vote_poll"),
+    path("call/status/", views.call_status, name="call_status"),
 ]

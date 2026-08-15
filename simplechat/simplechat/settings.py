@@ -68,12 +68,14 @@ SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',  # must be first so it takes over the runserver command
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'channels',
     'chat',
 ]
 
@@ -108,6 +110,19 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'simplechat.wsgi.application'
+ASGI_APPLICATION = 'simplechat.asgi.application'
+
+# In-memory channel layer: fine for a single-process dev server or a single
+# daphne worker. If you ever run multiple worker processes behind a load
+# balancer, switch this to channels_redis so call-signaling messages reach
+# every worker:
+#   CHANNEL_LAYERS = {"default": {"BACKEND": "channels_redis.core.RedisChannelLayer",
+#                                  "CONFIG": {"hosts": [("127.0.0.1", 6379)]}}}
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",
+    }
+}
 
 
 # Database
