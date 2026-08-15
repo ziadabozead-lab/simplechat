@@ -297,10 +297,24 @@ button:active { transform: scale(0.98); }
     background: #1c2b33;
     border-radius: 12px;
     overflow: hidden;
+    /* aspect-ratio isn't supported on some mobile browsers (older
+       Samsung Internet / Safari), which would collapse this to 0px
+       tall and make the video look frozen/blank. min-height is the
+       fallback that keeps it visible either way. */
+    min-height: 200px;
     aspect-ratio: 4 / 3;
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+@media (max-width: 480px) {
+    #call-video-grid {
+        grid-template-columns: 1fr;
+    }
+    .call-tile {
+        min-height: 60vh;
+    }
 }
 
 .call-tile video {
