@@ -9,6 +9,16 @@
     --meet-control: #3c4043;
     --meet-control-hover: #4a4d51;
     --meet-control-active-off: #ea4335;
+
+    /* Fluid sizing tokens - scale smoothly between mini-phones and TVs
+       instead of jumping at hard breakpoints. clamp(min, preferred, max) */
+    --meet-control-size: clamp(44px, 6vw, 56px);
+    --meet-avatar-size: clamp(56px, 10vw, 96px);
+    --meet-topbar-font: clamp(12px, 1.6vw, 17px);
+    --meet-title-font: clamp(13px, 2vw, 20px);
+    --meet-label-font: clamp(11px, 1.4vw, 15px);
+    --meet-icon-font: clamp(16px, 2.4vw, 24px);
+    --meet-gap: clamp(6px, 1.2vw, 14px);
 }
 
 * { box-sizing: border-box; }
@@ -16,7 +26,14 @@
 html, body {
     margin: 0;
     padding: 0;
+    /* dvh tracks the real visible viewport on mobile browsers, where the
+       address bar/toolbar showing or hiding changes the usable height.
+       Plain vh/% doesn't account for that and causes content to be cut
+       off or require scrolling on phones - fall back to vh/% for older
+       browsers that don't support dvh yet. */
     height: 100%;
+    height: 100vh;
+    height: 100dvh;
     background: var(--meet-bg);
     color: var(--meet-text);
     font-family: 'Google Sans', Roboto, Arial, sans-serif;
@@ -26,22 +43,27 @@ html, body {
 body {
     display: flex;
     flex-direction: column;
+    /* Respect notches / home-indicator areas on phones (iPhone etc.) */
+    padding-top: env(safe-area-inset-top, 0);
+    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-left: env(safe-area-inset-left, 0);
+    padding-right: env(safe-area-inset-right, 0);
 }
 
 #meet-topbar {
     flex-shrink: 0;
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 12px 20px;
-    font-size: 14px;
+    gap: var(--meet-gap);
+    padding: clamp(8px, 1.5vh, 14px) clamp(12px, 2.5vw, 24px);
+    font-size: var(--meet-topbar-font);
     color: var(--meet-text-dim);
 }
 
 #meet-title {
     color: var(--meet-text);
     font-weight: 500;
-    font-size: 16px;
+    font-size: var(--meet-title-font);
 }
 
 #meet-participant-count::before {
@@ -54,24 +76,38 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 8px 16px;
+    padding: clamp(6px, 1.5vh, 16px) clamp(8px, 2vw, 20px);
     min-height: 0;
+    overflow: hidden;
 }
 
 #meet-video-grid {
     width: 100%;
     height: 100%;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    grid-auto-rows: 1fr;
-    gap: 10px;
+    /* min(240px, 100%) means a tile never demands more width than the
+       screen has - so this naturally collapses to a single column on
+       narrow phones and fans out to a real grid on wide screens,
+       without needing separate column-count rules per breakpoint. */
+    grid-template-columns: repeat(auto-fit, minmax(min(clamp(200px, 20vw, 420px), 100%), 1fr));
+    gap: var(--meet-gap);
     align-content: center;
+    /* Tiles size themselves by aspect-ratio (below) rather than
+       stretching to fill the row - stops 2-3 tiles on a tall/narrow
+       screen turning into tall skinny rectangles. */
+    align-items: center;
     justify-items: stretch;
+    max-width: 1600px;
+    margin: 0 auto;
+    /* Safety net: if there are more participants than comfortably fit,
+       scroll just the grid - the topbar and controls stay fixed and
+       reachable no matter how many people join. */
+    overflow-y: auto;
 }
 
 /* Single participant (just you, or a 1:1 call): show fewer, bigger tiles */
 #meet-video-grid:has(> :only-child) {
-    grid-template-columns: minmax(0, 720px);
+    grid-template-columns: minmax(0, min(720px, 100%));
     justify-content: center;
 }
 
@@ -80,7 +116,13 @@ body {
     background: var(--meet-tile);
     border-radius: 12px;
     overflow: hidden;
-    min-height: 160px;
+    /* Real video proportions instead of stretching to fill whatever
+       height the grid row happens to have - this is what was making
+       tiles look like tall skinny bars on wider/taller screens. */
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    max-height: 100%;
+    min-height: 100px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -100,14 +142,14 @@ body {
 
 .meet-tile .meet-avatar {
     display: none;
-    width: 72px;
-    height: 72px;
+    width: var(--meet-avatar-size);
+    height: var(--meet-avatar-size);
     border-radius: 50%;
     background: #5f6368;
     color: #fff;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
+    font-size: calc(var(--meet-avatar-size) * 0.38);
     font-weight: 600;
 }
 
@@ -119,16 +161,21 @@ body {
     bottom: 10px;
     background: rgba(0,0,0,0.55);
     color: #fff;
-    font-size: 13px;
+    font-size: var(--meet-label-font);
     padding: 4px 10px;
     border-radius: 6px;
+    max-width: calc(100% - 20px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 #meet-waiting,
 #meet-error {
     position: absolute;
     color: var(--meet-text-dim);
-    font-size: 15px;
+    font-size: var(--meet-topbar-font);
+    padding: 0 16px;
 }
 
 #meet-waiting.hidden,
@@ -137,7 +184,7 @@ body {
 #meet-error {
     color: #f28b82;
     text-align: center;
-    max-width: 320px;
+    max-width: min(320px, 90%);
 }
 
 #meet-controls {
@@ -145,22 +192,23 @@ body {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 14px;
-    padding: 18px 20px 26px;
+    gap: clamp(10px, 2.5vw, 18px);
+    padding: clamp(12px, 2.5vh, 22px) clamp(12px, 2.5vw, 24px) clamp(16px, 3vh, 28px);
 }
 
 #meet-controls button {
-    width: 52px;
-    height: 52px;
+    width: var(--meet-control-size);
+    height: var(--meet-control-size);
     border-radius: 50%;
     border: none;
     background: var(--meet-control);
     color: var(--meet-text);
-    font-size: 20px;
+    font-size: var(--meet-icon-font);
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    flex-shrink: 0;
 }
 
 #meet-controls button:hover { background: var(--meet-control-hover); }
@@ -169,18 +217,58 @@ body {
 
 #meet-leave {
     background: var(--meet-danger) !important;
-    width: 68px;
-    border-radius: 26px;
+    width: calc(var(--meet-control-size) * 1.3);
+    border-radius: calc(var(--meet-control-size) / 2);
 }
 
 #meet-leave:hover { background: var(--meet-danger-hover) !important; }
 
+/* ===========================================================
+   Breakpoints: mini phones -> phones -> tablets -> laptops ->
+   desktops -> TVs / very large displays
+   =========================================================== */
+
+/* Mini phones (very narrow / small older devices) */
+@media (max-width: 340px) {
+    #meet-title { display: none; } /* keep just the timer + count visible */
+    .meet-tile .meet-tile-label { font-size: 10px; padding: 3px 7px; }
+}
+
+/* Phones */
 @media (max-width: 600px) {
-    #meet-topbar { padding: 10px 14px; font-size: 12px; }
-    #meet-title { font-size: 14px; }
     #meet-video-grid { grid-template-columns: 1fr; }
     #meet-video-grid:has(> :only-child) { grid-template-columns: 1fr; }
-    .meet-tile { min-height: 45vh; }
-    #meet-controls button { width: 48px; height: 48px; font-size: 18px; }
-    #meet-leave { width: 60px; }
+}
+
+/* Tablets and small laptops: cap grid width so tiles don't get huge */
+@media (min-width: 601px) and (max-width: 1023px) {
+    #meet-video-grid { max-width: 900px; }
+}
+
+/* Laptops / desktops */
+@media (min-width: 1024px) {
+    #meet-video-grid { max-width: 1300px; }
+}
+
+/* TVs / very large displays: everything scales up via the clamp() tokens
+   above automatically, but cap overall width so content isn't spread
+   too thin across a huge screen, and thicken tile corners a bit. */
+@media (min-width: 1920px) {
+    #meet-video-grid { max-width: 1800px; gap: 20px; }
+    .meet-tile { border-radius: 18px; }
+    #meet-controls { gap: 24px; padding-bottom: 40px; }
+}
+
+/* Touch devices: guarantee a real tap target regardless of the fluid
+   clamp() sizing above (44px is the accepted minimum). */
+@media (hover: none) and (pointer: coarse) {
+    #meet-controls button { min-width: 44px; min-height: 44px; }
+}
+
+/* Landscape phones: stage is short, so prioritise horizontal space and
+   shrink the chrome around it instead of stacking tiles tall. */
+@media (max-height: 420px) and (orientation: landscape) {
+    #meet-topbar { padding-top: 4px; padding-bottom: 4px; }
+    #meet-controls { padding-top: 8px; padding-bottom: 8px; }
+    #meet-video-grid { grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); }
 }
